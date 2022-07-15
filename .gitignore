@@ -2,3 +2,4 @@ causal_data
 wandb
 .DS_Store
 *.pyc
+wandb_api.txt

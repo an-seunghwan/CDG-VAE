@@ -1,12 +1,12 @@
 #%%
 import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 #%%
 import numpy as np
 import pandas as pd
 import tqdm
 from PIL import Image
-import os
 import matplotlib.pyplot as plt
 
 import torch
@@ -49,23 +49,23 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    parser.add_argument("--hidden_dim", default=8, type=int,
+    parser.add_argument("--hidden_dim", default=4, type=int,
                         help="hidden dimensions for MLP")
     parser.add_argument("--num_layer", default=5, type=int,
                         help="hidden dimensions for MLP")
     parser.add_argument("--latent_dim", default=4, type=int,
                         help="dimension of each latent node")
     
-    parser.add_argument('--epochs', default=50, type=int,
+    parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=128, type=int,
+    parser.add_argument('--batch_size', default=32, type=int,
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
     parser.add_argument('--w_threshold', default=0.2, type=float,
                         help='threshold for weighted adjacency matrix')
-    parser.add_argument('--lambda', default=0.1, type=float,
+    parser.add_argument('--lambda', default=0.01, type=float,
                         help='coefficient of LASSO penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
@@ -78,8 +78,6 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def train(train_x, model, config, optimizer):
-    model.train()
-    
     logs = {
         'loss': [], 
         'recon': [],
@@ -102,6 +100,7 @@ def train(train_x, model, config, optimizer):
         
         """reconstruction"""
         recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean()
+        # recon = (batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean()
         loss_.append(('recon', recon))
 
         """KL-divergence"""
@@ -142,8 +141,8 @@ def main():
     test_x = []
     for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
         test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    train_x = np.array(train_x).astype(float) / 255.
-    test_x = np.array(test_x).astype(float) / 255.
+    train_x = (np.array(train_x).astype(float) - 127.5) / 127.5
+    test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
 
     # wandb.run.summary['W_true'] = wandb.Table(data=pd.DataFrame(W_true))
     # fig = viz_graph(W_true, size=(7, 7), show=config["fig_show"])
@@ -171,8 +170,8 @@ def main():
             plt.figure(figsize=(4, 4))
             for i in range(9):
                 plt.subplot(3, 3, i+1)
-                plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
-                plt.title('{}'.format(i))
+                # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
+                plt.imshow((xhat[i].permute((1, 2, 0)).detach().numpy() + 1) / 2)
                 plt.axis('off')
             plt.savefig('./assets/image_{}.png'.format(epoch))
             # plt.show()

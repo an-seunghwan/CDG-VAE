@@ -34,12 +34,7 @@ class VAE(nn.Module):
                 Y[i, j] = p[j] - p[i]
         self.ReLU_Y = torch.nn.ReLU()(Y)
 
-        W = torch.rand(config["latent_dim"], config["latent_dim"])
-        min = -0.1
-        max = 0.1
-        W = (max - min) * W + min # ~ Uniform(-0.1, 0.1)
-        W = W.fill_diagonal_(0.)
-        self.W = nn.Parameter(W, requires_grad=True)
+        self.W = nn.Parameter(self.ReLU_Y, requires_grad=True)
 
         """decoder"""
         decoder = []
@@ -48,9 +43,8 @@ class VAE(nn.Module):
             decoder.append(nn.ConvTranspose2d(in_dim, self.config["hidden_dim"] * (1 + j), kernel_size=4, stride=2))
             decoder.append(nn.LeakyReLU(0.05))
             in_dim = self.config["hidden_dim"] * (1 + j)
-        # decoder.append(nn.Flatten())
         decoder.append(nn.ConvTranspose2d(in_dim, 3, kernel_size=4, stride=2, padding=0))
-        decoder.append(nn.Sigmoid())
+        decoder.append(nn.Tanh())
         decoder.append(nn.ReflectionPad2d(1))
         self.decoder = nn.Sequential(*decoder)
     
@@ -61,7 +55,7 @@ class VAE(nn.Module):
         B_trans_z = torch.matmul(z, self.W * self.ReLU_Y)
         epsilon = torch.randn(B_trans_z.shape)
         z_sem = B_trans_z + epsilon
-        xhat = self.decoder(UnFlatten()(B_trans_z + epsilon, self.config["latent_dim"]))
+        xhat = self.decoder(UnFlatten()(z_sem, self.config["latent_dim"]))
         return z, B_trans_z, z_sem, xhat
 #%%
 def main():
