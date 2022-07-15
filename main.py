@@ -11,8 +11,6 @@ import torch
 from utils.simulation import (
     set_random_seed,
     is_dag,
-    load_data,
-    count_accuracy
 )
 
 from utils.viz import (
@@ -21,10 +19,8 @@ from utils.viz import (
 )
 
 from utils.model import (
-    GAE
+    VAE
 )
-
-from utils.trac_exp import trace_expm
 #%%
 import sys
 import subprocess
