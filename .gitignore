@@ -1,1 +1,4 @@
 causal_data
+wandb
+.DS_Store
+*.pyc

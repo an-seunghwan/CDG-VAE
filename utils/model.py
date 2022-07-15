@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 #%%
 class UnFlatten(nn.Module):
-    def forward(self, input, size=config["latent_dim"]):
+    def forward(self, input, size):
         return input.view(input.size(0), size, 1, 1)
 #%%
 class VAE(nn.Module):
@@ -47,9 +47,10 @@ class VAE(nn.Module):
         for j in reversed(range(1, self.config["num_layer"])):
             decoder.append(nn.ConvTranspose2d(in_dim, self.config["hidden_dim"] * (1 + j), kernel_size=4, stride=2))
             decoder.append(nn.LeakyReLU(0.05))
-            in_dim = config["hidden_dim"] * (1 + j)
+            in_dim = self.config["hidden_dim"] * (1 + j)
         # decoder.append(nn.Flatten())
         decoder.append(nn.ConvTranspose2d(in_dim, 3, kernel_size=4, stride=2, padding=0))
+        decoder.append(nn.Sigmoid())
         decoder.append(nn.ReflectionPad2d(1))
         self.decoder = nn.Sequential(*decoder)
     
@@ -60,8 +61,8 @@ class VAE(nn.Module):
         B_trans_z = torch.matmul(z, self.W * self.ReLU_Y)
         epsilon = torch.randn(B_trans_z.shape)
         z_sem = B_trans_z + epsilon
-        recon = self.decoder(UnFlatten()(B_trans_z + epsilon))
-        return z, B_trans_z, z_sem, recon
+        xhat = self.decoder(UnFlatten()(B_trans_z + epsilon, self.config["latent_dim"]))
+        return z, B_trans_z, z_sem, xhat
 #%%
 def main():
     config = {
