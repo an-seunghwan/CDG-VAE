@@ -194,6 +194,7 @@ def main():
         
         """update log"""
         wandb.log({x : np.mean(y) for x, y in logs.items()})
+        wandb.log({'NonZero' : nonzero_ratio})
         
         # if epoch % 3 == 0:
         plt.figure(figsize=(4, 4))
