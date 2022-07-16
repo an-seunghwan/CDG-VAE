@@ -50,16 +50,16 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    parser.add_argument("--hidden_dim", default=4, type=int,
-                        help="hidden dimensions for MLP")
-    parser.add_argument("--num_layer", default=5, type=int,
-                        help="hidden dimensions for MLP")
+    # parser.add_argument("--hidden_dim", default=4, type=int,
+    #                     help="hidden dimensions for MLP")
+    # parser.add_argument("--num_layer", default=5, type=int,
+    #                     help="hidden dimensions for MLP")
     parser.add_argument("--latent_dim", default=4, type=int,
                         help="dimension of each latent node")
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=4, type=int,
+    parser.add_argument('--batch_size', default=32, type=int,
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
@@ -155,7 +155,9 @@ def main():
     
     train_x = torch.Tensor(train_x) 
     dataset = TensorDataset(train_x) 
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"])
+    dataloader = DataLoader(dataset, 
+                            batch_size=config["batch_size"],
+                            shuffle=True)
     
     # plt.imshow(train_x[0])
     # plt.show()
@@ -181,23 +183,23 @@ def main():
         logs, xhat = train(dataloader, model, config, optimizer)
         
         # if epoch % 20 == 0:
-        print_input = "[epoch {:03d}]".format(epoch)
+        print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
         print(print_input)
         
         """update log"""
         wandb.log({x : np.mean(y) for x, y in logs.items()})
         
-        if epoch % 3 == 0:
-            plt.figure(figsize=(4, 4))
-            for i in range(9):
-                plt.subplot(3, 3, i+1)
-                # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
-                plt.imshow((xhat[i].permute((1, 2, 0)).detach().numpy() + 1) / 2)
-                plt.axis('off')
-            plt.savefig('./assets/image_{}.png'.format(epoch))
-            # plt.show()
-            plt.close()
+        # if epoch % 3 == 0:
+        plt.figure(figsize=(4, 4))
+        for i in range(9):
+            plt.subplot(3, 3, i+1)
+            # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
+            plt.imshow((xhat[i].detach().numpy() + 1) / 2)
+            plt.axis('off')
+        plt.savefig('./assets/image_{}.png'.format(epoch))
+        # plt.show()
+        plt.close()
         
     B_est = (model.W * model.ReLU_Y).detach().numpy()
     B_est[np.abs(B_est) < config["w_threshold"]] = 0.
