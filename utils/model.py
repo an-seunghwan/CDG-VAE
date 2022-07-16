@@ -42,8 +42,13 @@ class VAE(nn.Module):
                 Y[i, j] = p[j] - p[i]
         self.ReLU_Y = torch.nn.ReLU()(Y)
 
-        self.W = nn.Parameter(self.ReLU_Y, requires_grad=True)
-
+        # self.W = nn.Parameter(self.ReLU_Y, requires_grad=True)
+        self.W = nn.Parameter(
+            torch.nn.init.normal_(
+                torch.zeros((self.config["latent_dim"], self.config["latent_dim"]), 
+                            requires_grad=True), 
+                mean=0.0, std=0.1))
+        
         """decoder"""
         # decoder = []
         # in_dim = self.config["latent_dim"]

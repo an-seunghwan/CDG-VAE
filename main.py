@@ -66,7 +66,7 @@ def get_args(debug):
     
     parser.add_argument('--w_threshold', default=0.2, type=float,
                         help='threshold for weighted adjacency matrix')
-    parser.add_argument('--lambda', default=0.01, type=float,
+    parser.add_argument('--lambda', default=0.1, type=float,
                         help='coefficient of LASSO penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
@@ -182,9 +182,14 @@ def main():
     for epoch in range(config["epochs"]):
         logs, xhat = train(dataloader, model, config, optimizer)
         
+        with torch.no_grad():
+            B_ = (model.W * model.ReLU_Y).detach().clone()
+            nonzero_ratio = (B_ != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
+            
         # if epoch % 20 == 0:
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
+        print_input += ', NonZero: {:.2f}'.format(nonzero_ratio)
         print(print_input)
         
         """update log"""
