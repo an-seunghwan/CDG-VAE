@@ -10,6 +10,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 import torch
+from torch.utils.data import TensorDataset, DataLoader
 
 from utils.simulation import (
     set_random_seed,
@@ -58,7 +59,7 @@ def get_args(debug):
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=32, type=int,
+    parser.add_argument('--batch_size', default=4, type=int,
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
@@ -77,7 +78,7 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def train(train_x, model, config, optimizer):
+def train(dataloader, model, config, optimizer):
     logs = {
         'loss': [], 
         'recon': [],
@@ -85,26 +86,34 @@ def train(train_x, model, config, optimizer):
         'KL': [],
     }
     
-    for i in range(len(train_x) // config["batch_size"]):
-        idx = np.random.choice(range(len(train_x)), config["batch_size"])
-        batch = torch.FloatTensor(train_x[idx])
-        batch = batch.permute((0, 3, 1, 2))
+    # for i in tqdm.tqdm(range(len(train_x) // config["batch_size"]), desc="inner loop"):
+    for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
+        # idx = np.random.choice(range(len(train_x)), config["batch_size"])
+        # batch = torch.FloatTensor(train_x[idx])
+        # batch = batch.permute((0, 3, 1, 2))
         if config["cuda"]:
             batch = batch.cuda()
             
+        batch = batch[0]
+        
         optimizer.zero_grad()
         
-        z, B_trans_z, z_sem, xhat = model(batch)
+        z, logvar, B_trans_z, z_sem, xhat = model(batch)
         
         loss_ = []
         
         """reconstruction"""
         recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean()
-        # recon = (batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean()
+        # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
         loss_.append(('recon', recon))
 
         """KL-divergence"""
-        KL = 0.5 * torch.pow(z - B_trans_z, 2).sum(axis=1).mean()
+        KL = torch.pow(z - B_trans_z, 2).sum(axis=1)
+        KL += torch.exp(logvar).sum(axis=1)
+        KL -= logvar.sum(axis=1)
+        KL -= config["latent_dim"]
+        KL *= 0.5
+        KL = KL.mean()
         loss_.append(('KL', KL))
         
         """Sparsity"""
@@ -124,7 +133,7 @@ def train(train_x, model, config, optimizer):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     wandb.config.update(config)
     
@@ -134,15 +143,22 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     train_imgs = os.listdir('./utils/causal_data/pendulum/train')
-    test_imgs = os.listdir('./utils/causal_data/pendulum/test')
+    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
     train_x = []
     for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
         train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
-    test_x = []
-    for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-        test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
     train_x = (np.array(train_x).astype(float) - 127.5) / 127.5
-    test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
+    # test_x = []
+    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
+    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
+    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
+    
+    train_x = torch.Tensor(train_x) 
+    dataset = TensorDataset(train_x) 
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"])
+    
+    # plt.imshow(train_x[0])
+    # plt.show()
 
     # wandb.run.summary['W_true'] = wandb.Table(data=pd.DataFrame(W_true))
     # fig = viz_graph(W_true, size=(7, 7), show=config["fig_show"])
@@ -160,8 +176,14 @@ def main():
         lr=config["lr"]
     )
     
-    for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
-        logs, xhat = train(train_x, model, config, optimizer)
+    # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
+    for epoch in range(config["epochs"]):
+        logs, xhat = train(dataloader, model, config, optimizer)
+        
+        # if epoch % 20 == 0:
+        print_input = "[epoch {:03d}]".format(epoch)
+        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
+        print(print_input)
         
         """update log"""
         wandb.log({x : np.mean(y) for x, y in logs.items()})

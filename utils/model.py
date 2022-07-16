@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 #%%
-class UnFlatten(nn.Module):
-    def forward(self, input, size):
-        return input.view(input.size(0), size, 1, 1)
+# class UnFlatten(nn.Module):
+#     def forward(self, input, size):
+#         return input.view(input.size(0), size, 1, 1)
 #%%
 class VAE(nn.Module):
     def __init__(self, config):
@@ -13,17 +13,25 @@ class VAE(nn.Module):
         
         self.config = config
         
-        """encoder """
-        encoder = []
-        in_dim = 3
-        for j in range(self.config["num_layer"]):
-            encoder.append(nn.Conv2d(in_channels=in_dim, out_channels=self.config["hidden_dim"] * (1 + j), kernel_size=4, stride=2))
-            encoder.append(nn.LeakyReLU(0.05))
-            in_dim = self.config["hidden_dim"] * (1 + j)
-        encoder.append(nn.Flatten())
-        self.encoder = nn.Sequential(*encoder)
+        """encoder"""
+        # encoder = []
+        # in_dim = 3
+        # for j in range(self.config["num_layer"]):
+        #     encoder.append(nn.Conv2d(in_channels=in_dim, out_channels=self.config["hidden_dim"] * (1 + j), kernel_size=4, stride=2))
+        #     encoder.append(nn.LeakyReLU(0.05))
+        #     in_dim = self.config["hidden_dim"] * (1 + j)
+        # encoder.append(nn.Flatten())
+        # self.encoder = nn.Sequential(*encoder)
+        self.encoder = nn.Sequential(
+            nn.Linear(3*96*96, 900),
+            nn.ELU(),
+            nn.Linear(900, 300),
+            nn.ELU(),
+            nn.Linear(300, 2 * self.config["latent_dim"]),
+        )
 
-        self.feature_layer = nn.Linear(in_dim, self.config["latent_dim"])
+        # self.feature_layer = nn.Linear(in_dim, self.config["latent_dim"])
+        # self.logvar_layer = nn.Linear(in_dim, self.config["latent_dim"])
 
         """weighted adjacency matrix"""
         p = {x:y for x,y in zip(range(config["latent_dim"]), range(config["latent_dim"]))}
@@ -37,26 +45,39 @@ class VAE(nn.Module):
         self.W = nn.Parameter(self.ReLU_Y, requires_grad=True)
 
         """decoder"""
-        decoder = []
-        in_dim = self.config["latent_dim"]
-        for j in reversed(range(1, self.config["num_layer"])):
-            decoder.append(nn.ConvTranspose2d(in_dim, self.config["hidden_dim"] * (1 + j), kernel_size=4, stride=2))
-            decoder.append(nn.LeakyReLU(0.05))
-            in_dim = self.config["hidden_dim"] * (1 + j)
-        decoder.append(nn.ConvTranspose2d(in_dim, 3, kernel_size=4, stride=2, padding=0))
-        decoder.append(nn.Tanh())
-        decoder.append(nn.ReflectionPad2d(1))
-        self.decoder = nn.Sequential(*decoder)
+        # decoder = []
+        # in_dim = self.config["latent_dim"]
+        # for j in reversed(range(1, self.config["num_layer"])):
+        #     decoder.append(nn.ConvTranspose2d(in_dim, self.config["hidden_dim"] * (1 + j), kernel_size=4, stride=2))
+        #     decoder.append(nn.LeakyReLU(0.05))
+        #     in_dim = self.config["hidden_dim"] * (1 + j)
+        # decoder.append(nn.ConvTranspose2d(in_dim, 3, kernel_size=4, stride=2, padding=0))
+        # decoder.append(nn.Tanh())
+        # decoder.append(nn.ReflectionPad2d(1))
+        # self.decoder = nn.Sequential(*decoder)
+        self.decoder = nn.Sequential(
+            nn.Linear(self.config["latent_dim"], 300),
+            nn.ELU(),
+            nn.Linear(300, 300),
+            nn.ELU(),
+            nn.Linear(300, 3*96*96),
+            nn.Tanh()
+        )
     
     def forward(self, input):
-        z = self.encoder(input)
-        z = self.feature_layer(z)
-        
+        h = self.encoder(nn.Flatten()(input))
+        z, logvar = torch.split(h, self.config["latent_dim"], dim=1)
+        # z = self.feature_layer(h)
+        # logvar = self.logvar_layer(h)
         B_trans_z = torch.matmul(z, self.W * self.ReLU_Y)
+        
         epsilon = torch.randn(B_trans_z.shape)
-        z_sem = B_trans_z + epsilon
-        xhat = self.decoder(UnFlatten()(z_sem, self.config["latent_dim"]))
-        return z, B_trans_z, z_sem, xhat
+        z_sem = B_trans_z + torch.exp(logvar / 2.) * epsilon
+        
+        # xhat = self.decoder(UnFlatten()(z_sem, self.config["latent_dim"]))
+        xhat = self.decoder(z_sem)
+        xhat = xhat.view(-1, 96, 96, 3)
+        return z, logvar, B_trans_z, z_sem, xhat
 #%%
 def main():
     config = {
