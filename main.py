@@ -66,7 +66,7 @@ def get_args(debug):
     
     parser.add_argument('--w_threshold', default=0.01, type=float,
                         help='threshold for weighted adjacency matrix')
-    parser.add_argument('--lambda', default=1, type=float,
+    parser.add_argument('--lambda', default=1000, type=float,
                         help='coefficient of LASSO penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
@@ -78,7 +78,7 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def train(dataloader, model, config, optimizer):
+def train(dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
@@ -92,11 +92,11 @@ def train(dataloader, model, config, optimizer):
         # batch = torch.FloatTensor(train_x[idx])
         # batch = batch.permute((0, 3, 1, 2))
         
+        batch = batch[0]
+        # batch.to(device)
         if config["cuda"]:
             batch = batch.cuda()
             
-        batch = batch[0]
-        
         optimizer.zero_grad()
         
         z, logvar, B_trans_z, z_sem, xhat = model(batch)
@@ -134,8 +134,9 @@ def train(dataloader, model, config, optimizer):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
     
     set_random_seed(config["seed"])
@@ -160,6 +161,9 @@ def main():
     dataloader = DataLoader(dataset, 
                             batch_size=config["batch_size"],
                             shuffle=True)
+    del train_imgs
+    del train_x
+    del dataset
     
     # plt.imshow(train_x[0])
     # plt.show()
@@ -170,22 +174,23 @@ def main():
     # fig = viz_heatmap(W_true, size=(5, 4), show=config["fig_show"])
     # wandb.log({'heatmap': wandb.Image(fig)})
     
-    model = VAE(config)
-
-    if config["cuda"]:
-        model.cuda()
+    model = VAE(config, device)
+    
+    model.to(device)
+    # if config["cuda"]:
+    #     model.cuda()
 
     optimizer = torch.optim.Adam(
         model.parameters(), 
         lr=config["lr"]
     )
     
-    wandb.watch(model, log_freq=50)
+    # wandb.watch(model, log_freq=50) # tracking gradients
     model.train()
     
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
-        logs, xhat = train(dataloader, model, config, optimizer)
+        logs, xhat = train(dataloader, model, config, optimizer, device)
         
         with torch.no_grad():
             B_ = (model.W * model.ReLU_Y).detach().clone()
@@ -205,7 +210,7 @@ def main():
             for i in range(9):
                 plt.subplot(3, 3, i+1)
                 # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
-                plt.imshow((xhat[i].detach().numpy() + 1) / 2)
+                plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
                 plt.axis('off')
             plt.savefig('./assets/image_{}.png'.format(epoch))
             # plt.show()

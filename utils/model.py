@@ -8,10 +8,11 @@ import torch.nn.functional as F
 #         return input.view(input.size(0), size, 1, 1)
 #%%
 class VAE(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, device):
         super(VAE, self).__init__()
         
         self.config = config
+        self.device = device
         
         """encoder"""
         self.encoder = nn.Sequential(
@@ -20,7 +21,7 @@ class VAE(nn.Module):
             nn.Linear(900, 300),
             nn.ELU(),
             nn.Linear(300, 2 * self.config["latent_dim"]),
-        )
+        ).to(device)
         # encoder = []
         # in_dim = 3
         # for j in range(self.config["num_layer"]):
@@ -40,14 +41,14 @@ class VAE(nn.Module):
         for i in range(self.config["latent_dim"]):
             for j in range(self.config["latent_dim"]):
                 Y[i, j] = p[j] - p[i]
-        self.ReLU_Y = torch.nn.ReLU()(Y)
+        self.ReLU_Y = torch.nn.ReLU()(Y).to(device)
 
         # self.W = nn.Parameter(self.ReLU_Y, requires_grad=True)
         self.W = nn.Parameter(
             torch.nn.init.normal_(
                 torch.zeros((self.config["latent_dim"], self.config["latent_dim"]), 
                             requires_grad=True), 
-                mean=0.0, std=0.1))
+                mean=0.0, std=0.1)).to(device)
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -57,7 +58,7 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, 3*96*96),
             nn.Tanh()
-        )
+        ).to(device)
         # decoder = []
         # in_dim = self.config["latent_dim"]
         # for j in reversed(range(1, self.config["num_layer"])):
@@ -76,7 +77,7 @@ class VAE(nn.Module):
         # logvar = self.logvar_layer(h)
         B_trans_z = torch.matmul(z, self.W * self.ReLU_Y)
         
-        epsilon = torch.randn(B_trans_z.shape)
+        epsilon = torch.randn(B_trans_z.shape).to(self.device)
         z_sem = B_trans_z + torch.exp(logvar / 2.) * epsilon
         
         # xhat = self.decoder(UnFlatten()(z_sem, self.config["latent_dim"]))
