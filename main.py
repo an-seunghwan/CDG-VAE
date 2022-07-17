@@ -66,7 +66,7 @@ def get_args(debug):
     
     parser.add_argument('--w_threshold', default=0.01, type=float,
                         help='threshold for weighted adjacency matrix')
-    parser.add_argument('--lambda', default=1000, type=float,
+    parser.add_argument('--lambda', default=0.1, type=float,
                         help='coefficient of LASSO penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
@@ -134,7 +134,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -185,7 +185,7 @@ def main():
         lr=config["lr"]
     )
     
-    # wandb.watch(model, log_freq=50) # tracking gradients
+    wandb.watch(model, log_freq=50) # tracking gradients
     model.train()
     
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
@@ -216,13 +216,24 @@ def main():
             # plt.show()
             plt.close()
     
-    B_est = (model.W * model.ReLU_Y).detach().numpy()
+    """reconstruction result"""
+    fig = plt.figure(figsize=(4, 4))
+    for i in range(9):
+        plt.subplot(3, 3, i+1)
+        # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
+        plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
+        plt.axis('off')
+    plt.close()
+    wandb.log({'reconstruction': wandb.Image(fig)})
+    
+    """post-process"""
+    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
     B_est[np.abs(B_est) < config["w_threshold"]] = 0.
     B_est = B_est.astype(float).round(2)
 
     fig = viz_graph(B_est, size=(7, 7), show=config["fig_show"])
     wandb.log({'Graph_est': wandb.Image(fig)})
-    fig = viz_heatmap(B_est, size=(5, 4), show=config["fig_show"])
+    fig = viz_heatmap(np.flipud(B_est), size=(5, 4), show=config["fig_show"])
     wandb.log({'heatmap_est': wandb.Image(fig)})
 
     """model save"""
