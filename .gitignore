@@ -1,5 +1,7 @@
-causal_data
-wandb
 .DS_Store
 *.pyc
+causal_data
+wandb
 wandb_api.txt
+artifacts
+*.pth

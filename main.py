@@ -40,7 +40,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    # tags=[""],
+    tags=["linear"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -64,9 +64,9 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--w_threshold', default=0.2, type=float,
+    parser.add_argument('--w_threshold', default=0.01, type=float,
                         help='threshold for weighted adjacency matrix')
-    parser.add_argument('--lambda', default=0.1, type=float,
+    parser.add_argument('--lambda', default=1, type=float,
                         help='coefficient of LASSO penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
@@ -91,6 +91,7 @@ def train(dataloader, model, config, optimizer):
         # idx = np.random.choice(range(len(train_x)), config["batch_size"])
         # batch = torch.FloatTensor(train_x[idx])
         # batch = batch.permute((0, 3, 1, 2))
+        
         if config["cuda"]:
             batch = batch.cuda()
             
@@ -133,7 +134,7 @@ def train(dataloader, model, config, optimizer):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     wandb.config.update(config)
     
@@ -143,11 +144,12 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     train_imgs = os.listdir('./utils/causal_data/pendulum/train')
-    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
     train_x = []
     for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
         train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
     train_x = (np.array(train_x).astype(float) - 127.5) / 127.5
+    
+    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
     # test_x = []
     # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
     #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
@@ -178,6 +180,9 @@ def main():
         lr=config["lr"]
     )
     
+    wandb.watch(model, log_freq=50)
+    model.train()
+    
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
         logs, xhat = train(dataloader, model, config, optimizer)
@@ -186,7 +191,6 @@ def main():
             B_ = (model.W * model.ReLU_Y).detach().clone()
             nonzero_ratio = (B_ != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
             
-        # if epoch % 20 == 0:
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
         print_input += ', NonZero: {:.2f}'.format(nonzero_ratio)
@@ -196,17 +200,17 @@ def main():
         wandb.log({x : np.mean(y) for x, y in logs.items()})
         wandb.log({'NonZero' : nonzero_ratio})
         
-        # if epoch % 3 == 0:
-        plt.figure(figsize=(4, 4))
-        for i in range(9):
-            plt.subplot(3, 3, i+1)
-            # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
-            plt.imshow((xhat[i].detach().numpy() + 1) / 2)
-            plt.axis('off')
-        plt.savefig('./assets/image_{}.png'.format(epoch))
-        # plt.show()
-        plt.close()
-        
+        if epoch % 10 == 0:
+            plt.figure(figsize=(4, 4))
+            for i in range(9):
+                plt.subplot(3, 3, i+1)
+                # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
+                plt.imshow((xhat[i].detach().numpy() + 1) / 2)
+                plt.axis('off')
+            plt.savefig('./assets/image_{}.png'.format(epoch))
+            # plt.show()
+            plt.close()
+    
     B_est = (model.W * model.ReLU_Y).detach().numpy()
     B_est[np.abs(B_est) < config["w_threshold"]] = 0.
     B_est = B_est.astype(float).round(2)
@@ -216,6 +220,18 @@ def main():
     fig = viz_heatmap(B_est, size=(5, 4), show=config["fig_show"])
     wandb.log({'heatmap_est': wandb.Image(fig)})
 
+    """model save"""
+    torch.save(model.state_dict(), './assets/model.pth')
+    artifact = wandb.Artifact('model', type='model') # description=""
+    artifact.add_file('./assets/model.pth')
+    wandb.log_artifact(artifact)
+    
+    """model load"""
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v1', type='model')
+    # model_dir = artifact.download()
+    # model = VAE(config)
+    # model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    
     wandb.run.finish()
 #%%
 if __name__ == '__main__':

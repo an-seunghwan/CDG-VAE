@@ -14,6 +14,13 @@ class VAE(nn.Module):
         self.config = config
         
         """encoder"""
+        self.encoder = nn.Sequential(
+            nn.Linear(3*96*96, 900),
+            nn.ELU(),
+            nn.Linear(900, 300),
+            nn.ELU(),
+            nn.Linear(300, 2 * self.config["latent_dim"]),
+        )
         # encoder = []
         # in_dim = 3
         # for j in range(self.config["num_layer"]):
@@ -22,13 +29,6 @@ class VAE(nn.Module):
         #     in_dim = self.config["hidden_dim"] * (1 + j)
         # encoder.append(nn.Flatten())
         # self.encoder = nn.Sequential(*encoder)
-        self.encoder = nn.Sequential(
-            nn.Linear(3*96*96, 900),
-            nn.ELU(),
-            nn.Linear(900, 300),
-            nn.ELU(),
-            nn.Linear(300, 2 * self.config["latent_dim"]),
-        )
 
         # self.feature_layer = nn.Linear(in_dim, self.config["latent_dim"])
         # self.logvar_layer = nn.Linear(in_dim, self.config["latent_dim"])
@@ -50,6 +50,14 @@ class VAE(nn.Module):
                 mean=0.0, std=0.1))
         
         """decoder"""
+        self.decoder = nn.Sequential(
+            nn.Linear(self.config["latent_dim"], 300),
+            nn.ELU(),
+            nn.Linear(300, 300),
+            nn.ELU(),
+            nn.Linear(300, 3*96*96),
+            nn.Tanh()
+        )
         # decoder = []
         # in_dim = self.config["latent_dim"]
         # for j in reversed(range(1, self.config["num_layer"])):
@@ -60,14 +68,6 @@ class VAE(nn.Module):
         # decoder.append(nn.Tanh())
         # decoder.append(nn.ReflectionPad2d(1))
         # self.decoder = nn.Sequential(*decoder)
-        self.decoder = nn.Sequential(
-            nn.Linear(self.config["latent_dim"], 300),
-            nn.ELU(),
-            nn.Linear(300, 300),
-            nn.ELU(),
-            nn.Linear(300, 3*96*96),
-            nn.Tanh()
-        )
     
     def forward(self, input):
         h = self.encoder(nn.Flatten()(input))
