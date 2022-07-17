@@ -47,8 +47,8 @@ class VAE(nn.Module):
         self.W = nn.Parameter(
             torch.nn.init.normal_(
                 torch.zeros((self.config["latent_dim"], self.config["latent_dim"]), 
-                            requires_grad=True), 
-                mean=0.0, std=0.1)).to(device)
+                            requires_grad=True).to(device), 
+                mean=0.0, std=0.1))
         
         """decoder"""
         self.decoder = nn.Sequential(
