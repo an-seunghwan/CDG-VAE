@@ -8,7 +8,6 @@ import pandas as pd
 import tqdm
 from PIL import Image
 import matplotlib.pyplot as plt
-plt.switch_backend('agg')
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader
