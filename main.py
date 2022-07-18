@@ -8,6 +8,7 @@ import pandas as pd
 import tqdm
 from PIL import Image
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader
@@ -212,7 +213,7 @@ def main():
                 # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
                 plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
                 plt.axis('off')
-            plt.savefig('./assets/image_{}.png'.format(epoch))
+            plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
             # plt.show()
             plt.close()
     
@@ -223,6 +224,7 @@ def main():
         # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
         plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
         plt.axis('off')
+    plt.savefig('./assets/image.png')
     plt.close()
     wandb.log({'reconstruction': wandb.Image(fig)})
     

@@ -5,3 +5,4 @@ wandb
 wandb_api.txt
 artifacts
 *.pth
+tmp_image_*
