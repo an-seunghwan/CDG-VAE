@@ -8,6 +8,7 @@ import pandas as pd
 import tqdm
 from PIL import Image
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader
@@ -64,12 +65,16 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--w_threshold', default=0.01, type=float,
-                        help='threshold for weighted adjacency matrix')
+    parser.add_argument('--penalty', default='lasso', type=str,
+                        help='penalty type for sparity: lasso, MCP')
     parser.add_argument('--lambda', default=0.1, type=float,
-                        help='coefficient of LASSO penalty')
+                        help='coefficient of sparsity penalty')
+    parser.add_argument('--gamma', default=2, type=float,
+                        help='coefficient of MCP penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
+    parser.add_argument('--w_threshold', default=0.01, type=float,
+                        help='threshold for weighted adjacency matrix')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
@@ -82,7 +87,7 @@ def train(dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
-        'L1': [],
+        'Sparsity': [],
         'KL': [],
     }
     
@@ -118,10 +123,25 @@ def train(dataloader, model, config, optimizer, device):
         loss_.append(('KL', KL))
         
         """Sparsity"""
-        L1 = torch.linalg.norm(model.W * model.ReLU_Y, ord=1)
-        loss_.append(('L1', L1))
-        
-        loss = recon + config["beta"] * KL + config["lambda"] * L1
+        if config["penalty"] == "lasso":
+            sparsity = torch.linalg.norm(model.W * model.ReLU_Y, ord=1)
+            loss_.append(('Sparsity', sparsity))
+            loss = recon + config["beta"] * KL + config["lambda"] * sparsity
+            
+        elif config["penalty"] == "MCP":
+            p1 = config["lambda"] * torch.abs(model.W * model.ReLU_Y)
+            p1 -= torch.pow(model.W * model.ReLU_Y, 2) / (2. * config["gamma"])
+            p1 = p1[torch.abs(model.W * model.ReLU_Y) <= config["gamma"] * config["lambda"]].sum()
+            
+            p2 = (torch.abs(model.W * model.ReLU_Y) > config["gamma"] * config["lambda"]).sum().float()
+            p2 *= torch.tensor(0.5 * config["gamma"] * (config["lambda"] ** 2))
+            
+            sparsity = p1 + p2
+            loss_.append(('Sparsity', sparsity))
+            loss = recon + config["beta"] * KL + sparsity
+            
+        else:
+            raise ValueError("Unknown penalty type.")
         loss_.append(('loss', loss))
         
         loss.backward()
