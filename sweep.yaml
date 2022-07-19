@@ -10,7 +10,7 @@ parameters:
   penalty:
     values: ["lasso"]
   batch_size:
-    values: [32]
+    values: [16, 32, 64, 128]
   lambda:
     values: [0.1, 1, 10, 100, 1000]
   # gamma:

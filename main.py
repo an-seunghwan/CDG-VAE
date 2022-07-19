@@ -104,19 +104,21 @@ def train(dataloader, model, config, optimizer, device):
             
         optimizer.zero_grad()
         
-        z, logvar, B_trans_z, z_sem, xhat = model(batch)
+        z, logvar, Bz, z_sem, xhat = model(batch)
+        z.var(axis=0)
         
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean()
+        recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
         # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
         loss_.append(('recon', recon))
 
         """KL-divergence"""
-        KL = torch.pow(z - B_trans_z, 2).sum(axis=1)
-        KL += torch.exp(logvar).sum(axis=1)
-        KL -= logvar.sum(axis=1)
+        logvar = logvar.squeeze(dim=1)
+        KL = torch.pow(z - Bz, 2).sum(axis=1)
+        KL += torch.exp(logvar) * config["latent_dim"]
+        KL -= logvar * config["latent_dim"]
         KL -= config["latent_dim"]
         KL *= 0.5
         KL = KL.mean()
@@ -154,7 +156,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -233,7 +235,6 @@ def main():
                 plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
                 plt.axis('off')
             plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
-            # plt.show()
             plt.close()
     
     """reconstruction result"""
