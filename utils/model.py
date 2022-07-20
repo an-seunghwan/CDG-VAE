@@ -2,6 +2,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import numpy as np
 #%%
 class VAE(nn.Module):
     def __init__(self, config, device):
@@ -34,6 +36,9 @@ class VAE(nn.Module):
                         requires_grad=True).to(device)
             )
         
+        mask = np.triu(np.ones((self.config["latent_dim"], self.config["latent_dim"])), k=1)
+        self.mask = torch.FloatTensor(mask).to(device)
+        
         """decoder"""
         self.decoder = nn.Sequential(
             nn.Linear(self.config["latent_dim"], 300),
@@ -49,7 +54,7 @@ class VAE(nn.Module):
         z = self.z_layer(h)
         logvar = self.logvar_layer(h)
         
-        Bz = torch.matmul(z, self.W * self.ReLU_Y)
+        Bz = torch.matmul(z, self.W * self.ReLU_Y * self.mask) # maksing is added
         epsilon = torch.randn(Bz.shape).to(self.device)
         z_sem = Bz + torch.exp(logvar / 2.) * epsilon
         
@@ -60,9 +65,7 @@ class VAE(nn.Module):
 def main():
     config = {
         "n": 100,
-        "latent_dim": 4,
-        "num_layer": 5,
-        "hidden_dim": 8,
+        "latent_dim": 5,
     }
     
     model = VAE(config, 'cpu')
@@ -73,6 +76,7 @@ def main():
     z, logvar, Bz, z_sem, recon = model(batch)
     epsilon = torch.ones(Bz.shape)
     z_sem = Bz + torch.exp(logvar / 2.) * epsilon
+    
     assert z.shape == (config["n"], config["latent_dim"])
     assert Bz.shape == (config["n"], config["latent_dim"])
     assert z_sem.shape == (config["n"], config["latent_dim"])

@@ -41,7 +41,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "masking"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -55,7 +55,7 @@ def get_args(debug):
     #                     help="hidden dimensions for MLP")
     # parser.add_argument("--num_layer", default=5, type=int,
     #                     help="hidden dimensions for MLP")
-    parser.add_argument("--latent_dim", default=4, type=int,
+    parser.add_argument("--latent_dim", default=5, type=int,
                         help="dimension of each latent node")
     
     parser.add_argument('--epochs', default=100, type=int,
@@ -73,7 +73,7 @@ def get_args(debug):
                         help='coefficient of MCP penalty')
     parser.add_argument('--beta', default=1, type=float,
                         help='coefficient of KL-divergence')
-    parser.add_argument('--w_threshold', default=0.01, type=float,
+    parser.add_argument('--w_threshold', default=0.1, type=float,
                         help='threshold for weighted adjacency matrix')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -215,8 +215,11 @@ def main():
         logs, xhat = train(dataloader, model, config, optimizer, device)
         
         with torch.no_grad():
-            B_ = (model.W * model.ReLU_Y).detach().clone()
-            nonzero_ratio = (B_ != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
+            # update masking
+            if epoch > config["epochs"] // 3:
+                B_ = (model.W * model.ReLU_Y).detach().clone()
+                model.mask[B_ < config["w_threshold"]] = 0. 
+            nonzero_ratio = (model.mask != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
             
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -249,7 +252,7 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """post-process"""
-    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
+    B_est = (model.W * model.ReLU_Y * model.mask).cpu().detach().numpy()
     B_est[np.abs(B_est) < config["w_threshold"]] = 0.
     B_est = B_est.astype(float).round(2)
 

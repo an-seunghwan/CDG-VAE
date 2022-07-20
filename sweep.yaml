@@ -12,7 +12,7 @@ parameters:
   batch_size:
     values: [16, 32, 64, 128]
   lambda:
-    values: [0.1, 1, 10, 100, 1000]
+    values: [0.001, 0.01, 0.05, 0.1, 1, 10, 100, 1000]
   # gamma:
   #   values: [2, 3, 4]
   beta:
