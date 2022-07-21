@@ -41,7 +41,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "masking"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -101,11 +101,11 @@ def train(dataloader, model, config, optimizer, device):
         # batch.to(device)
         if config["cuda"]:
             batch = batch.cuda()
-            
+        
+        # with torch.autograd.set_detect_anomaly(True):    
         optimizer.zero_grad()
         
-        z, logvar, Bz, z_sem, xhat = model(batch)
-        z.var(axis=0)
+        z, logvar, Bz, B, xhat = model(batch)
         
         loss_ = []
         
@@ -116,7 +116,7 @@ def train(dataloader, model, config, optimizer, device):
 
         """KL-divergence"""
         logvar = logvar.squeeze(dim=1)
-        KL = torch.pow(z - Bz, 2).sum(axis=1)
+        KL = torch.pow(Bz - z, 2).sum(axis=1)
         KL += torch.exp(logvar) * config["latent_dim"]
         KL -= logvar * config["latent_dim"]
         KL -= config["latent_dim"]
@@ -126,16 +126,16 @@ def train(dataloader, model, config, optimizer, device):
         
         """Sparsity"""
         if config["penalty"] == "lasso":
-            sparsity = torch.linalg.norm(model.W * model.ReLU_Y, ord=1)
+            sparsity = torch.linalg.norm(B, ord=1)
             loss_.append(('Sparsity', sparsity))
             loss = recon + config["beta"] * KL + config["lambda"] * sparsity
             
         elif config["penalty"] == "MCP":
-            p1 = config["lambda"] * torch.abs(model.W * model.ReLU_Y)
-            p1 -= torch.pow(model.W * model.ReLU_Y, 2) / (2. * config["gamma"])
-            p1 = p1[torch.abs(model.W * model.ReLU_Y) <= config["gamma"] * config["lambda"]].sum()
+            p1 = config["lambda"] * torch.abs(B)
+            p1 -= torch.pow(B, 2) / (2. * config["gamma"])
+            p1 = p1[torch.abs(B) <= config["gamma"] * config["lambda"]].sum()
             
-            p2 = (torch.abs(model.W * model.ReLU_Y) > config["gamma"] * config["lambda"]).sum().float()
+            p2 = (torch.abs(B) > config["gamma"] * config["lambda"]).sum().float()
             p2 *= torch.tensor(0.5 * config["gamma"] * (config["lambda"] ** 2))
             
             sparsity = p1 + p2
@@ -153,10 +153,10 @@ def train(dataloader, model, config, optimizer, device):
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, xhat
+    return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -212,14 +212,14 @@ def main():
     
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
-        logs, xhat = train(dataloader, model, config, optimizer, device)
+        logs, B, xhat = train(dataloader, model, config, optimizer, device)
         
         with torch.no_grad():
-            # update masking
-            if epoch > config["epochs"] // 3:
-                B_ = (model.W * model.ReLU_Y).detach().clone()
-                model.mask[B_ < config["w_threshold"]] = 0. 
-            nonzero_ratio = (model.mask != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
+            # """update mask"""
+            # if epoch > config["epochs"] // 3:
+            #     B_ = (model.W * model.ReLU_Y).detach().clone()
+            #     model.mask[torch.abs(B_) < config["w_threshold"]] = 0. 
+            nonzero_ratio = (B != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
             
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -252,8 +252,8 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """post-process"""
-    B_est = (model.W * model.ReLU_Y * model.mask).cpu().detach().numpy()
-    B_est[np.abs(B_est) < config["w_threshold"]] = 0.
+    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
+    # B_est[np.abs(B_est) < config["w_threshold"]] = 0.
     B_est = B_est.astype(float).round(2)
 
     fig = viz_graph(B_est, size=(7, 7), show=config["fig_show"])
