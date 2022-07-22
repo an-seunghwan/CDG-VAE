@@ -19,7 +19,8 @@ class VAE(nn.Module):
             nn.Linear(900, 300),
             nn.ELU(),
         ).to(device)
-        self.logvar_layer = nn.Linear(300, 1).to(device) # 1 for diagonal variance (equal variance assumption)
+        self.z_layer = nn.Linear(300, self.config["latent_dim"]).to(device)
+        self.logvar_layer = nn.Linear(300, 1).to(device) # 1 for single diagonal variance (equal variance assumption)
 
         """weighted adjacency matrix"""
         p = {x:y for x,y in zip(range(config["latent_dim"]), range(config["latent_dim"]))}
@@ -31,10 +32,17 @@ class VAE(nn.Module):
         self.ReLU_Y = torch.nn.ReLU()(Y).to(device)
 
         self.W = nn.Parameter(
-            torch.nn.init.normal_(
-                torch.zeros((config["latent_dim"], config["latent_dim"]), 
-                            requires_grad=True),
-                mean=0., std=1.).to(self.device))
+                torch.zeros((self.config["latent_dim"], self.config["latent_dim"]), 
+                            requires_grad=True).to(self.device))
+        # self.W = nn.Parameter(
+        #     torch.nn.init.normal_(
+        #         torch.zeros((self.config["latent_dim"], self.config["latent_dim"]), 
+        #                     requires_grad=True),
+        #         mean=0., std=0.1).to(self.device))
+        
+        """masking"""
+        mask = np.triu(np.ones((self.config["latent_dim"], self.config["latent_dim"])), k=1)
+        self.mask = torch.FloatTensor(mask)
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -45,25 +53,28 @@ class VAE(nn.Module):
             nn.Linear(300, 3*96*96),
             nn.Tanh()
         ).to(device)
-    
+        
     def forward(self, input):
         h = self.encoder(nn.Flatten()(input.to(self.device)))
+        z = self.z_layer(h)
         logvar = self.logvar_layer(h)
 
         """Latent Generating Process"""
-        z = torch.zeros(logvar.shape[0], self.config["latent_dim"]).to(self.device)
-        Bz = torch.zeros(logvar.shape[0], self.config["latent_dim"]).to(self.device) # posterior mean vector
-        B = self.W * self.ReLU_Y
+        latent = torch.zeros(z.shape).to(self.device)
         for j in range(self.config["latent_dim"]):
-            epsilon = torch.randn(logvar.shape).to(self.device)
-            if j == 0: 
-                z[:, [j]] = torch.exp(logvar / 2.) * epsilon
-            Bz[:, [j]] = torch.matmul(z[:, :j].clone(), B[:j, [j]].clone())
-            z[:, [j]] = Bz[:, [j]].clone() + torch.exp(logvar / 2.) * epsilon
+            if j == 0:
+                latent[:, j] = z[:, j].clone()
+            latent[:, j] = latent[:, j-1].clone() + torch.abs(z[:, j].clone())
+        
+        # B = self.W * self.ReLU_Y 
+        B = self.W * self.ReLU_Y * self.mask # masking
+        zB = torch.matmul(latent, B) # posterior mean vector
+        epsilon = torch.randn(z.shape).to(self.device)
+        z = zB + torch.exp(logvar / 2.) * epsilon
         
         xhat = self.decoder(z)
         xhat = xhat.view(-1, 96, 96, 3)
-        return z, logvar, Bz, B, xhat
+        return latent, logvar, zB, B, xhat
 #%%
 def main():
     config = {
@@ -76,11 +87,13 @@ def main():
         print(x.shape)
         
     batch = torch.rand(config["n"], 96, 96, 3)
-    z, logvar, recon = model(batch)
+    latent, logvar, zB, B, xhat = model(batch)
     
-    assert z.shape == (config["n"], config["latent_dim"])
+    assert latent.shape == (config["n"], config["latent_dim"])
     assert logvar.shape == (config["n"], 1)
-    assert recon.shape == (config["n"], 96, 96, 3)
+    assert zB.shape == (config["n"], config["latent_dim"])
+    assert B.shape == (config["latent_dim"], config["latent_dim"])
+    assert xhat.shape == (config["n"], 96, 96, 3)
     
     print("Model test pass!")
 #%%
@@ -98,7 +111,7 @@ if __name__ == '__main__':
 #     nn.Linear(900, 300),
 #     nn.ELU(),
 # )
-# # z_layer = nn.Linear(300, config["latent_dim"]) 
+# z_layer = nn.Linear(300, config["latent_dim"]) 
 # logvar_layer = nn.Linear(300, 1) # 1 for diagonal variance (equal variance assumption)
 
 # """weighted adjacency matrix"""
@@ -111,31 +124,28 @@ if __name__ == '__main__':
 # ReLU_Y = torch.nn.ReLU()(Y)
 
 # W = nn.Parameter(
-#     torch.nn.init.normal_(
 #         torch.zeros((config["latent_dim"], config["latent_dim"]), 
-#                     requires_grad=True),
-#         mean=0., std=1.))
+#                     requires_grad=True))
 
 # # mask = np.triu(np.ones((config["latent_dim"], config["latent_dim"])), k=1)
 # # mask = torch.FloatTensor(mask)
 
 # x = torch.randn(10, 96, 96, 3)
 # h = encoder(nn.Flatten()(x))
-# # z = z_layer(h)
+# z = z_layer(h)
 # logvar = logvar_layer(h)
 
-# """Latent Generating Process"""
-# z = torch.zeros(logvar.shape[0], config["latent_dim"])
-# Bz = torch.zeros(logvar.shape[0], config["latent_dim"])
-# B = W * ReLU_Y
+# latent = torch.zeros(z.shape)
 # for j in range(config["latent_dim"]):
-#     epsilon = torch.randn(logvar.shape)
-#     if j == 0: 
-#         z[:, [j]] = torch.exp(logvar / 2.) * epsilon
-#     Bz[:, [j]] = torch.matmul(z[:, :j], B[:j, [j]])
-#     z[:, [j]] = torch.matmul(z[:, :j], B[:j, [j]]) + torch.exp(logvar / 2.) * epsilon
+#     if j == 0:
+#         latent[:, j] = z[:, j].clone()
+#     latent[:, j] = latent[:, j-1].clone() + torch.abs(z[:, j].clone())
 
-# torch.matmul(z, B)
+# # B = W * ReLU_Y * mask
+# B = W * ReLU_Y 
+# zB = torch.matmul(latent, B)
+# epsilon = torch.randn(z.shape)
+# z = zB + torch.exp(logvar / 2) * epsilon
 
 # """decoder"""
 # decoder = nn.Sequential(
@@ -149,18 +159,4 @@ if __name__ == '__main__':
 
 # xhat = decoder(z)
 # xhat = xhat.view(-1, 96, 96, 3)
-
-
-# def forward(self, input):
-# h = encoder(nn.Flatten()(input.to(device)))
-# z = z_layer(h)
-# logvar = logvar_layer(h)
-
-# Bz = torch.matmul(z, W * ReLU_Y * mask) # maksing is added
-# epsilon = torch.randn(Bz.shape).to(device)
-# z_sem = Bz + torch.exp(logvar / 2.) * epsilon
-
-# xhat = self.decoder(z_sem)
-# xhat = xhat.view(-1, 96, 96, 3)
-# return z, logvar, Bz, z_sem, xhat
 #%%
