@@ -105,7 +105,7 @@ def train(dataloader, model, config, optimizer, device):
         # with torch.autograd.set_detect_anomaly(True):    
         optimizer.zero_grad()
         
-        latent, zB, B, xhat = model(batch)
+        exog_mean, exog_logvar, latent, B, xhat = model(batch)
         
         loss_ = []
         
@@ -115,11 +115,10 @@ def train(dataloader, model, config, optimizer, device):
         loss_.append(('recon', recon))
 
         """KL-divergence"""
-        # logvar = logvar.squeeze(dim=1)
-        KL = torch.pow(latent - zB, 2).sum(axis=1)
-        # KL -= logvar * config["latent_dim"]
-        # KL += torch.exp(logvar) * config["latent_dim"]
-        # KL -= config["latent_dim"]
+        KL = torch.pow(exog_mean, 2).sum(axis=1)
+        KL -= exog_logvar.sum(axis=1)
+        KL += torch.exp(exog_logvar).sum(axis=1)
+        KL -= config["latent_dim"]
         KL *= 0.5
         KL = KL.mean()
         loss_.append(('KL', KL))

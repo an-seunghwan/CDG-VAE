@@ -18,9 +18,8 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(900, 300),
             nn.ELU(),
+            nn.Linear(300, 2 * self.config["latent_dim"]),
         ).to(device)
-        self.z_layer = nn.Linear(300, self.config["latent_dim"]).to(device)
-        # self.logvar_layer = nn.Linear(300, 1).to(device) # 1 for single diagonal variance (equal variance assumption)
 
         """weighted adjacency matrix"""
         p = {x:y for x,y in zip(range(config["latent_dim"]), range(config["latent_dim"]))}
@@ -54,28 +53,21 @@ class VAE(nn.Module):
             nn.Tanh()
         ).to(device)
         
+        self.I = torch.eye(self.config["latent_dim"]).to(device)
+        
     def forward(self, input):
         h = self.encoder(nn.Flatten()(input.to(self.device)))
-        z_ = self.z_layer(h)
-        # logvar = self.logvar_layer(h)
+        exog_mean, exog_logvar = torch.split(h, self.config["latent_dim"], dim=1)
+        epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(self.device)
 
         """Latent Generating Process"""
-        latent = torch.zeros(z_.shape).to(self.device)
-        for j in range(self.config["latent_dim"]):
-            if j == 0:
-                latent[:, j] = z_[:, j].clone()
-            latent[:, j] = latent[:, j-1].clone() + torch.abs(z_[:, j].clone()) # non-decreasing
-        
         # B = self.W * self.ReLU_Y 
         B = self.W * self.ReLU_Y * self.mask # masking
-        zB = torch.matmul(latent, B) # posterior mean vector
-        epsilon = torch.randn(z_.shape).to(self.device)
-        z = zB + epsilon # fixed noise variance = 1 (equal variance)
-        # z = zB + torch.exp(logvar / 2.) * epsilon
+        latent = torch.matmul(epsilon, torch.inverse(self.I - B))
         
-        xhat = self.decoder(z)
+        xhat = self.decoder(latent)
         xhat = xhat.view(-1, 96, 96, 3)
-        return latent, zB, B, xhat
+        return exog_mean, exog_logvar, latent, B, xhat
 #%%
 def main():
     config = {
