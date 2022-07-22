@@ -73,7 +73,7 @@ def get_args(debug):
                         help='coefficient of MCP penalty')
     parser.add_argument('--beta', default=0.1, type=float,
                         help='coefficient of KL-divergence')
-    parser.add_argument('--w_threshold', default=0.01, type=float,
+    parser.add_argument('--w_threshold', default=0.1, type=float,
                         help='threshold for weighted adjacency matrix')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -105,7 +105,7 @@ def train(dataloader, model, config, optimizer, device):
         # with torch.autograd.set_detect_anomaly(True):    
         optimizer.zero_grad()
         
-        latent, logvar, zB, B, xhat = model(batch)
+        latent, zB, B, xhat = model(batch)
         
         loss_ = []
         
@@ -115,11 +115,11 @@ def train(dataloader, model, config, optimizer, device):
         loss_.append(('recon', recon))
 
         """KL-divergence"""
-        logvar = logvar.squeeze(dim=1)
+        # logvar = logvar.squeeze(dim=1)
         KL = torch.pow(latent - zB, 2).sum(axis=1)
-        KL -= logvar * config["latent_dim"]
-        KL += torch.exp(logvar) * config["latent_dim"]
-        KL -= config["latent_dim"]
+        # KL -= logvar * config["latent_dim"]
+        # KL += torch.exp(logvar) * config["latent_dim"]
+        # KL -= config["latent_dim"]
         KL *= 0.5
         KL = KL.mean()
         loss_.append(('KL', KL))
@@ -152,11 +152,11 @@ def train(dataloader, model, config, optimizer, device):
         """accumulate losses"""
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
-    print(logvar[0])
+    
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)

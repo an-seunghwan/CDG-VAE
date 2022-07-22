@@ -20,7 +20,7 @@ class VAE(nn.Module):
             nn.ELU(),
         ).to(device)
         self.z_layer = nn.Linear(300, self.config["latent_dim"]).to(device)
-        self.logvar_layer = nn.Linear(300, 1).to(device) # 1 for single diagonal variance (equal variance assumption)
+        # self.logvar_layer = nn.Linear(300, 1).to(device) # 1 for single diagonal variance (equal variance assumption)
 
         """weighted adjacency matrix"""
         p = {x:y for x,y in zip(range(config["latent_dim"]), range(config["latent_dim"]))}
@@ -42,7 +42,7 @@ class VAE(nn.Module):
         
         """masking"""
         mask = np.triu(np.ones((self.config["latent_dim"], self.config["latent_dim"])), k=1)
-        self.mask = torch.FloatTensor(mask)
+        self.mask = torch.FloatTensor(mask).to(self.device)
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -56,25 +56,26 @@ class VAE(nn.Module):
         
     def forward(self, input):
         h = self.encoder(nn.Flatten()(input.to(self.device)))
-        z = self.z_layer(h)
-        logvar = self.logvar_layer(h)
+        z_ = self.z_layer(h)
+        # logvar = self.logvar_layer(h)
 
         """Latent Generating Process"""
-        latent = torch.zeros(z.shape).to(self.device)
+        latent = torch.zeros(z_.shape).to(self.device)
         for j in range(self.config["latent_dim"]):
             if j == 0:
-                latent[:, j] = z[:, j].clone()
-            latent[:, j] = latent[:, j-1].clone() + torch.abs(z[:, j].clone())
+                latent[:, j] = z_[:, j].clone()
+            latent[:, j] = latent[:, j-1].clone() + torch.abs(z_[:, j].clone()) # non-decreasing
         
         # B = self.W * self.ReLU_Y 
         B = self.W * self.ReLU_Y * self.mask # masking
         zB = torch.matmul(latent, B) # posterior mean vector
-        epsilon = torch.randn(z.shape).to(self.device)
-        z = zB + torch.exp(logvar / 2.) * epsilon
+        epsilon = torch.randn(z_.shape).to(self.device)
+        z = zB + epsilon # fixed noise variance = 1 (equal variance)
+        # z = zB + torch.exp(logvar / 2.) * epsilon
         
         xhat = self.decoder(z)
         xhat = xhat.view(-1, 96, 96, 3)
-        return latent, logvar, zB, B, xhat
+        return latent, zB, B, xhat
 #%%
 def main():
     config = {
