@@ -9,13 +9,15 @@ parameters:
   #   values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
   penalty:
     values: ["lasso"]
-  batch_size:
-    values: [32, 64, 128]
-  lambda:
+  # batch_size:
+  #   values: [32, 64, 128]
+  lambda1:
     values: [0.01, 0.1, 1, 10]
-  w_threshold:
-    values: [0.01, 0.1]
+  lambda2:
+    values: [0.01, 0.1, 1, 10]
   beta:
     values: [0.01, 0.1, 1]
+  w_threshold:
+    values: [0.01, 0.1]
   # gamma:
   #   values: [2, 3, 4]

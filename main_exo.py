@@ -41,7 +41,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "nomask", "prior_constraint"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "nomask", "prior_constraint: DAG reconstruction"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -60,7 +60,7 @@ def get_args(debug):
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=32, type=int,
+    parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
@@ -126,7 +126,7 @@ def train(dataloader, model, config, optimizer, device):
         KL = KL.mean()
         loss_.append(('KL', KL))
         
-        """prior constraint"""
+        """prior constraint""" # DAG reconstruction
         prior = (0.5 * torch.pow(latent - torch.matmul(latent, B), 2).sum(axis=1)).mean()
         loss_.append(('prior', prior))
         
@@ -162,7 +162,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
