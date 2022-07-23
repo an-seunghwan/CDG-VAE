@@ -39,9 +39,9 @@ class VAE(nn.Module):
         #                     requires_grad=True),
         #         mean=0., std=0.1).to(self.device))
         
-        """masking"""
-        mask = np.triu(np.ones((self.config["latent_dim"], self.config["latent_dim"])), k=1)
-        self.mask = torch.FloatTensor(mask).to(self.device)
+        # """masking"""
+        # mask = np.triu(np.ones((self.config["latent_dim"], self.config["latent_dim"])), k=1)
+        # self.mask = torch.FloatTensor(mask).to(self.device)
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -58,11 +58,13 @@ class VAE(nn.Module):
     def forward(self, input):
         h = self.encoder(nn.Flatten()(input.to(self.device)))
         exog_mean, exog_logvar = torch.split(h, self.config["latent_dim"], dim=1)
+        # variance scaling (exp(-0.5) ~ exp(0.5))
+        exog_logvar = torch.tanh(exog_logvar) * 0.5
         epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(self.device)
 
         """Latent Generating Process"""
-        # B = self.W * self.ReLU_Y 
-        B = self.W * self.ReLU_Y * self.mask # masking
+        B = self.W * self.ReLU_Y 
+        # B = self.W * self.ReLU_Y * self.mask # masking
         latent = torch.matmul(epsilon, torch.inverse(self.I - B))
         
         xhat = self.decoder(latent)

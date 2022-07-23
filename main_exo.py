@@ -23,7 +23,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model import (
+from utils.model_exo import (
     VAE
 )
 #%%
@@ -41,7 +41,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "nomask", "prior_constraint"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -67,13 +67,15 @@ def get_args(debug):
     
     parser.add_argument('--penalty', default='lasso', type=str,
                         help='penalty type for sparity: lasso, MCP')
-    parser.add_argument('--lambda', default=0.1, type=float,
+    parser.add_argument('--lambda1', default=0.1, type=float,
                         help='coefficient of sparsity penalty')
     parser.add_argument('--gamma', default=2, type=float,
                         help='coefficient of MCP penalty')
     parser.add_argument('--beta', default=0.1, type=float,
                         help='coefficient of KL-divergence')
-    parser.add_argument('--w_threshold', default=0.1, type=float,
+    parser.add_argument('--lambda2', default=0.1, type=float,
+                        help='coefficient of prior constraint')
+    parser.add_argument('--w_threshold', default=0.01, type=float,
                         help='threshold for weighted adjacency matrix')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -87,8 +89,9 @@ def train(dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
-        'Sparsity': [],
         'KL': [],
+        'prior': [],
+        'Sparsity': [],
     }
     
     # for i in tqdm.tqdm(range(len(train_x) // config["batch_size"]), desc="inner loop"):
@@ -123,11 +126,15 @@ def train(dataloader, model, config, optimizer, device):
         KL = KL.mean()
         loss_.append(('KL', KL))
         
+        """prior constraint"""
+        prior = (0.5 * torch.pow(latent - torch.matmul(latent, B), 2).sum(axis=1)).mean()
+        loss_.append(('prior', prior))
+        
         """Sparsity"""
         if config["penalty"] == "lasso":
             sparsity = torch.linalg.norm(B, ord=1)
             loss_.append(('Sparsity', sparsity))
-            loss = recon + config["beta"] * KL + config["lambda"] * sparsity
+            loss = recon + config["beta"] * KL + config["lambda2"] * prior + config["lambda1"] * sparsity
             
         elif config["penalty"] == "MCP":
             p1 = config["lambda"] * torch.abs(B)
@@ -139,7 +146,7 @@ def train(dataloader, model, config, optimizer, device):
             
             sparsity = p1 + p2
             loss_.append(('Sparsity', sparsity))
-            loss = recon + config["beta"] * KL + sparsity
+            loss = recon + config["beta"] * KL + config["lambda2"] * prior + sparsity
             
         else:
             raise ValueError("Unknown penalty type.")
@@ -155,7 +162,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -214,11 +221,11 @@ def main():
         logs, B, xhat = train(dataloader, model, config, optimizer, device)
         
         with torch.no_grad():
-            """update mask"""
-            if epoch > config["epochs"] // 3:
-                B_ = (model.W * model.ReLU_Y).detach().clone()
-                model.mask[torch.abs(B_) < config["w_threshold"]] = 0. 
-            nonzero_ratio = (B != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
+            # """update mask"""
+            # if epoch > config["epochs"] // 3:
+            #     B_ = (model.W * model.ReLU_Y).detach().clone()
+            #     model.mask[torch.abs(B_) < config["w_threshold"]] = 0. 
+            nonzero_ratio = (torch.abs(B) < config["w_threshold"]).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
             
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -251,9 +258,13 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """post-process"""
+    # B_est = (model.W * model.ReLU_Y * model.mask).cpu().detach().numpy()
     B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
-    # B_est[np.abs(B_est) < config["w_threshold"]] = 0.
+    B_est[np.abs(B_est) < config["w_threshold"]] = 0.
     B_est = B_est.astype(float).round(2)
+    
+    nonzero_ratio = (B_est != 0).sum() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
+    wandb.log({'NonZero' : nonzero_ratio})
 
     fig = viz_graph(B_est, size=(7, 7), show=config["fig_show"])
     wandb.log({'Graph_est': wandb.Image(fig)})
