@@ -67,7 +67,8 @@ class VAE(nn.Module):
         # B = self.W * self.ReLU_Y * self.mask # masking
         latent = torch.matmul(epsilon, torch.inverse(self.I - B))
         
-        xhat = self.decoder(latent)
+        # xhat = self.decoder(latent)
+        xhat = self.decoder(torch.matmul(latent, B))
         xhat = xhat.view(-1, 96, 96, 3)
         return exog_mean, exog_logvar, latent, B, xhat
 #%%

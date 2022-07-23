@@ -41,7 +41,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "nomask", "prior_constraint: DAG reconstruction"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "nomask", "prior_constraint: DAG reconstruction", "recon_with_Bz"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -178,12 +178,6 @@ def main():
         train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
     train_x = (np.array(train_x).astype(float) - 127.5) / 127.5
     
-    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
-    # test_x = []
-    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
-    
     train_x = torch.Tensor(train_x) 
     dataset = TensorDataset(train_x) 
     dataloader = DataLoader(dataset, 
@@ -225,7 +219,8 @@ def main():
             # if epoch > config["epochs"] // 3:
             #     B_ = (model.W * model.ReLU_Y).detach().clone()
             #     model.mask[torch.abs(B_) < config["w_threshold"]] = 0. 
-            nonzero_ratio = (torch.abs(B) < config["w_threshold"]).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
+            nonzero_ratio = (torch.abs(B) >= config["w_threshold"]).sum().item() 
+            nonzero_ratio /= (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
             
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -277,11 +272,40 @@ def main():
     artifact.add_file('./assets/model.pth')
     wandb.log_artifact(artifact)
     
-    """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v1', type='model')
+    # """model load"""
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v623', type='model')
     # model_dir = artifact.download()
-    # model = VAE(config)
+    # model = VAE(config, device)
     # model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    
+    # B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
+    # B_est[np.abs(B_est) < config["w_threshold"]] = 0.
+    
+    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
+    # test_x = []
+    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
+    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
+    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
+    # test_x = torch.Tensor(test_x) 
+    
+    # """intervention"""
+    # exog_mean, exog_logvar, latent, B, xhat = model(test_x[[0]])
+    # plt.imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
+    # plt.axis('off')
+    # plt.savefig('./assets/original.png')
+    # plt.close()
+    
+    # z = latent.detach()
+    # epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(device)
+    # do = 0
+    # do_value = 0
+    # for j in range(config["latent_dim"]):
+    #     if j == do:
+    #         z[:, [j]] = do_value
+    #     else:
+    #         if j == 0:  # root node
+    #             z[:, [j]] = epsilon[:, [j]]
+    #         z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(B_est)[:j, [j]]) + epsilon[:, [j]]
     
     wandb.run.finish()
 #%%
