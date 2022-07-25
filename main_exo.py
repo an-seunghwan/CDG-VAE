@@ -41,7 +41,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "nomask", "prior_constraint: DAG reconstruction", "recon_with_Bz"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "nomask", "prior_constraint: DAG reconstruction", "recon_with_SEM"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
