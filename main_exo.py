@@ -164,7 +164,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, B, xhat1
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -274,40 +274,69 @@ def main():
     artifact.add_file('./assets/model.pth')
     wandb.log_artifact(artifact)
     
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v623', type='model')
-    # model_dir = artifact.download()
-    # model = VAE(config, device)
-    # model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    """model load"""
+    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v16', type='model')
+    model_dir = artifact.download()
+    model = VAE(config, device)
+    model.load_state_dict(torch.load(model_dir + '/model.pth'))
     
-    # B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
-    # B_est[np.abs(B_est) < config["w_threshold"]] = 0.
+    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
+    B_est[np.abs(B_est) < 0.01] = 0.
     
-    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
-    # test_x = []
-    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
-    # test_x = torch.Tensor(test_x) 
+    # test dataset
+    test_imgs = os.listdir('./utils/causal_data/pendulum/test')
+    test_x = []
+    for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
+        test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
+    test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
+    test_x = torch.Tensor(test_x) 
     
-    # """intervention"""
-    # exog_mean, exog_logvar, latent, B, xhat = model(test_x[[0]])
-    # plt.imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
-    # plt.axis('off')
-    # plt.savefig('./assets/original.png')
-    # plt.close()
+    """intervention"""
+    exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(test_x[[1]])
+    plt.imshow((xhat1[0].cpu().detach().numpy() + 1) / 2)
+    plt.axis('off')
+    plt.savefig('./assets/original.png')
+    plt.close()
     
-    # z = latent.detach()
-    # epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(device)
-    # do = 0
-    # do_value = 0
-    # for j in range(config["latent_dim"]):
-    #     if j == do:
-    #         z[:, [j]] = do_value
-    #     else:
-    #         if j == 0:  # root node
-    #             z[:, [j]] = epsilon[:, [j]]
-    #         z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(B_est)[:j, [j]]) + epsilon[:, [j]]
+    """reconstruction with intervention"""
+    z = latent.detach().clone()
+    epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(device)
+    do_index = 1
+    do_value = 5
+    for j in range(config["latent_dim"]):
+        if j == do_index:
+            z[:, [j]] = do_value
+        else:
+            if j == 0:  # root node
+                z[:, [j]] = epsilon[:, [j]]
+            z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(B_est)[:j, [j]].to(device)) + epsilon[:, [j]]
+    
+    do_xhat = model.decoder(z).view(96, 96, 3)
+    plt.imshow((do_xhat.cpu().detach().numpy() + 1) / 2)
+    plt.axis('off')
+    plt.savefig('./assets/do_recon.png')
+    plt.close()
+    
+    # """reconstruction with intervention"""
+    # fig, axs = plt.subplots(config["latent_dim"], 11, figsize=(10, 5))
+    # for do_index in range(config["latent_dim"]):
+    #     z = latent.detach().clone()
+    #     epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(device)
+        
+    #     for i, do_value in enumerate(np.linspace(-20, 20, 11)):
+    #         for j in range(config["latent_dim"]):
+    #             if j == do_index:
+    #                 z[:, [j]] = do_value
+    #             else:
+    #                 if j == 0:  # root node
+    #                     z[:, [j]] = epsilon[:, [j]]
+    #                 z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(B_est)[:j, [j]].to(device)) + epsilon[:, [j]]
+        
+    #         do_xhat = model.decoder(z).view(96, 96, 3)
+    #         axs[do_index, i].imshow((do_xhat.cpu().detach().numpy() + 1) / 2)
+    #         axs[do_index, i].axis('off')
+    #     fig.savefig('./assets/do_recon.png')
+    #     plt.close()
     
     wandb.run.finish()
 #%%
