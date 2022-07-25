@@ -108,12 +108,14 @@ def train(dataloader, model, config, optimizer, device):
         # with torch.autograd.set_detect_anomaly(True):    
         optimizer.zero_grad()
         
-        exog_mean, exog_logvar, latent, B, xhat = model(batch)
+        exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(batch)
         
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
+        recon = 0.5 * torch.pow(xhat1 - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
+        recon += 0.5 * torch.pow(xhat2 - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
+        recon *= 0.5
         # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
         loss_.append(('recon', recon))
 
@@ -159,7 +161,7 @@ def train(dataloader, model, config, optimizer, device):
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, B, xhat
+    return logs, B, xhat1
 #%%
 def main():
     config = vars(get_args(debug=False)) # default configuration

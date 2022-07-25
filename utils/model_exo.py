@@ -58,8 +58,7 @@ class VAE(nn.Module):
     def forward(self, input):
         h = self.encoder(nn.Flatten()(input.to(self.device)))
         exog_mean, exog_logvar = torch.split(h, self.config["latent_dim"], dim=1)
-        # variance scaling (exp(-0.5) ~ exp(0.5))
-        exog_logvar = torch.tanh(exog_logvar) * 0.5
+        exog_logvar = torch.tanh(exog_logvar) * 0.5 # variance scaling (exp(-0.5) ~ exp(0.5))
 
         """Latent Generating Process"""
         epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(self.device)
@@ -72,11 +71,14 @@ class VAE(nn.Module):
         # 2. with Bz
         # xhat = self.decoder(torch.matmul(latent, B))
         # 3. with Bz + epsilon (SEM)
-        epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(self.device)
-        xhat = self.decoder(torch.matmul(latent, B) + epsilon)
+        xhat1 = self.decoder(torch.matmul(latent, B) + epsilon)
         
-        xhat = xhat.view(-1, 96, 96, 3)
-        return exog_mean, exog_logvar, latent, B, xhat
+        # using z = Bz + epsilon relationship
+        xhat2 = self.decoder(latent)
+        
+        xhat1 = xhat1.view(-1, 96, 96, 3)
+        xhat2 = xhat2.view(-1, 96, 96, 3)
+        return exog_mean, exog_logvar, latent, B, xhat1, xhat2
 #%%
 def main():
     config = {
