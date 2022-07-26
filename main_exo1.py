@@ -157,6 +157,7 @@ def train(dataloader, model, config, optimizer, device):
             # loss_.append(('loss', loss))
             
             loss = recon + config["beta"] * KL
+            loss_.append(('loss', loss))
             
             loss.backward()
             optimizer.step()
@@ -168,7 +169,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
