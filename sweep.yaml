@@ -17,7 +17,7 @@ parameters:
   #   values: [0.01, 0.1, 1, 10]
   beta:
     values: [0.01, 0.1, 1, 10, 20, 50]
-  w_threshold:
-    values: [0.01, 0.1]
+  # w_threshold:
+  #   values: [0.01, 0.1]
   # gamma:
   #   values: [2, 3, 4]

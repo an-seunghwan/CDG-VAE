@@ -44,7 +44,8 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "Gumbel-Sigmoid", "without_sparsity",]
+    tags=["linear", "Gumbel-Sigmoid", "without_sparsity",
+          "degenerate_posterior"]
         #   "prior_constraint: DAG reconstruction",], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
@@ -71,15 +72,15 @@ def get_args(debug):
     #                     help='coefficient of sparsity penalty')
     # parser.add_argument('--gamma', default=2, type=float,
     #                     help='coefficient of MCP penalty')
-    parser.add_argument('--beta', default=10, type=float,
+    parser.add_argument('--beta', default=5, type=float,
                         help='coefficient of KL-divergence')
     # parser.add_argument('--lambda2', default=0.1, type=float,
     #                     help='coefficient of prior constraint')
     parser.add_argument('--w_threshold', default=0.1, type=float,
                         help='threshold for adjacency matrix')
     
-    # parser.add_argument('--temperature', default=0.5, type=float,
-    #                     help='temperature for Gumbel-Sigmoid')
+    parser.add_argument('--temperature', default=0.2, type=float,
+                        help='temperature for Gumbel-Sigmoid')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
@@ -119,7 +120,7 @@ def train(dataloader, model, config, optimizer, device):
 
             """KL-divergence"""
             KL = torch.pow(exog, 2).sum(axis=1)
-            # KL = exog_logvar.sum(axis=1)
+            # KL += exog_logvar.sum(axis=1)
             # KL += torch.exp(exog_logvar).sum(axis=1)
             # KL -= config["latent_dim"]
             KL *= 0.5
