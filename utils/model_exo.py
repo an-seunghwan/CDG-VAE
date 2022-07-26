@@ -63,7 +63,7 @@ class VAE(nn.Module):
         """Latent Generating Process"""
         B = torch.sigmoid((self.W + self.sample_gumbel(self.W.shape)) / self.tau) * self.ReLU_Y # B \in {0, 1}
         epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape)
-        latent = torch.sigmoid(torch.matmul(epsilon, torch.inverse(I - B)))
+        latent = torch.sigmoid(torch.matmul(epsilon, torch.inverse(self.I - B)))
 
         inverse_sigmoid_latent = torch.log(latent / (1. - latent))
 
