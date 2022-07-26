@@ -41,9 +41,8 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "nomask", 
-          "prior_constraint: DAG reconstruction", "recon_with_SEM_only",
-          "exogenous_variance_fixed_to_one"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "Gumbel-Sigmoid", 
+          "prior_constraint: DAG reconstruction",], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -79,6 +78,9 @@ def get_args(debug):
                         help='coefficient of prior constraint')
     parser.add_argument('--w_threshold', default=0.01, type=float,
                         help='threshold for weighted adjacency matrix')
+    
+    parser.add_argument('--temperature', default=0.2, type=float,
+                        help='temperature for Gumbel-Sigmoid')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
