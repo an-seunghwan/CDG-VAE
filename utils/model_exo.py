@@ -18,7 +18,7 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(900, 300),
             nn.ELU(),
-            nn.Linear(300, 2 * self.config["latent_dim"]),
+            nn.Linear(300, self.config["latent_dim"]),
         ).to(device)
 
         """weighted adjacency matrix"""
@@ -56,12 +56,14 @@ class VAE(nn.Module):
         self.I = torch.eye(self.config["latent_dim"]).to(device)
         
     def forward(self, input):
-        h = self.encoder(nn.Flatten()(input.to(self.device)))
-        exog_mean, exog_logvar = torch.split(h, self.config["latent_dim"], dim=1)
-        exog_logvar = torch.tanh(exog_logvar) * 0.5 # variance scaling (exp(-0.5) ~ exp(0.5))
+        # h = self.encoder(nn.Flatten()(input.to(self.device)))
+        # exog_mean, exog_logvar = torch.split(h, self.config["latent_dim"], dim=1)
+        # exog_logvar = torch.tanh(exog_logvar) * 0.5 # variance scaling (exp(-0.5) ~ exp(0.5))
+        exog_mean = self.encoder(nn.Flatten()(input.to(self.device)))
 
         """Latent Generating Process"""
-        epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(self.device)
+        # epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(self.device)
+        epsilon = exog_mean + torch.randn(exog_mean.shape).to(self.device)
         B = self.W * self.ReLU_Y 
         # B = self.W * self.ReLU_Y * self.mask # masking
         latent = torch.matmul(epsilon, torch.inverse(self.I - B))
@@ -71,14 +73,16 @@ class VAE(nn.Module):
         # 2. with Bz
         # xhat = self.decoder(torch.matmul(latent, B))
         # 3. with Bz + epsilon (SEM)
-        xhat1 = self.decoder(torch.matmul(latent, B) + epsilon)
+        xhat = self.decoder(torch.matmul(latent, B) + epsilon)
         
         # using z = Bz + epsilon relationship
-        xhat2 = self.decoder(latent)
+        # xhat2 = self.decoder(latent)
         
-        xhat1 = xhat1.view(-1, 96, 96, 3)
-        xhat2 = xhat2.view(-1, 96, 96, 3)
-        return exog_mean, exog_logvar, latent, B, xhat1, xhat2
+        # xhat1 = xhat1.view(-1, 96, 96, 3)
+        # xhat2 = xhat2.view(-1, 96, 96, 3) 
+        xhat = xhat.view(-1, 96, 96, 3)
+        # return exog_mean, exog_logvar, latent, B, xhat1, xhat2
+        return exog_mean, latent, B, xhat
 #%%
 def main():
     config = {

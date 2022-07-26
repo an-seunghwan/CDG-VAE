@@ -41,7 +41,9 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "nomask", "prior_constraint: DAG reconstruction", "recon_with_SEM"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "nomask", 
+          "prior_constraint: DAG reconstruction", "recon_with_SEM_only",
+          "exogenous_variance_fixed_to_one"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -108,22 +110,23 @@ def train(dataloader, model, config, optimizer, device):
         # with torch.autograd.set_detect_anomaly(True):    
         optimizer.zero_grad()
         
-        exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(batch)
+        # exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(batch)
+        exog_mean, latent, B, xhat = model(batch)
         
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat1 - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
-        recon += 0.5 * torch.pow(xhat2 - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
+        recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
+        # recon += 0.5 * torch.pow(xhat2 - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
         recon *= 0.5
         # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
         loss_.append(('recon', recon))
 
         """KL-divergence"""
         KL = torch.pow(exog_mean, 2).sum(axis=1)
-        KL -= exog_logvar.sum(axis=1)
-        KL += torch.exp(exog_logvar).sum(axis=1)
-        KL -= config["latent_dim"]
+        # KL -= exog_logvar.sum(axis=1)
+        # KL += torch.exp(exog_logvar).sum(axis=1)
+        # KL -= config["latent_dim"]
         KL *= 0.5
         KL = KL.mean()
         loss_.append(('KL', KL))
@@ -161,7 +164,7 @@ def train(dataloader, model, config, optimizer, device):
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, B, xhat1
+    return logs, B, xhat
 #%%
 def main():
     config = vars(get_args(debug=True)) # default configuration
@@ -274,48 +277,48 @@ def main():
     artifact.add_file('./assets/model.pth')
     wandb.log_artifact(artifact)
     
-    """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v16', type='model')
-    model_dir = artifact.download()
-    model = VAE(config, device)
-    model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    # """model load"""
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v16', type='model')
+    # model_dir = artifact.download()
+    # model = VAE(config, device)
+    # model.load_state_dict(torch.load(model_dir + '/model.pth'))
     
-    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
-    B_est[np.abs(B_est) < 0.01] = 0.
+    # B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
+    # B_est[np.abs(B_est) < 0.01] = 0.
     
-    # test dataset
-    test_imgs = os.listdir('./utils/causal_data/pendulum/test')
-    test_x = []
-    for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-        test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
-    test_x = torch.Tensor(test_x) 
+    # # test dataset
+    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
+    # test_x = []
+    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
+    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
+    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
+    # test_x = torch.Tensor(test_x) 
     
-    """intervention"""
-    exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(test_x[[1]])
-    plt.imshow((xhat1[0].cpu().detach().numpy() + 1) / 2)
-    plt.axis('off')
-    plt.savefig('./assets/original.png')
-    plt.close()
+    # """intervention"""
+    # exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(test_x[[1]])
+    # plt.imshow((xhat1[0].cpu().detach().numpy() + 1) / 2)
+    # plt.axis('off')
+    # plt.savefig('./assets/original.png')
+    # plt.close()
     
-    """reconstruction with intervention"""
-    z = latent.detach().clone()
-    epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(device)
-    do_index = 1
-    do_value = 5
-    for j in range(config["latent_dim"]):
-        if j == do_index:
-            z[:, [j]] = do_value
-        else:
-            if j == 0:  # root node
-                z[:, [j]] = epsilon[:, [j]]
-            z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(B_est)[:j, [j]].to(device)) + epsilon[:, [j]]
+    # """reconstruction with intervention"""
+    # z = latent.detach().clone()
+    # epsilon = exog_mean + torch.exp(exog_logvar / 2) * torch.randn(exog_mean.shape).to(device)
+    # do_index = 1
+    # do_value = 5
+    # for j in range(config["latent_dim"]):
+    #     if j == do_index:
+    #         z[:, [j]] = do_value
+    #     else:
+    #         if j == 0:  # root node
+    #             z[:, [j]] = epsilon[:, [j]]
+    #         z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(B_est)[:j, [j]].to(device)) + epsilon[:, [j]]
     
-    do_xhat = model.decoder(z).view(96, 96, 3)
-    plt.imshow((do_xhat.cpu().detach().numpy() + 1) / 2)
-    plt.axis('off')
-    plt.savefig('./assets/do_recon.png')
-    plt.close()
+    # do_xhat = model.decoder(z).view(96, 96, 3)
+    # plt.imshow((do_xhat.cpu().detach().numpy() + 1) / 2)
+    # plt.axis('off')
+    # plt.savefig('./assets/do_recon.png')
+    # plt.close()
     
     # """reconstruction with intervention"""
     # fig, axs = plt.subplots(config["latent_dim"], 11, figsize=(10, 5))
