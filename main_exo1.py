@@ -27,6 +27,9 @@ from utils.model_exo import (
     VAE
 )
 #%%
+"""
+wandb artifact cache cleanup "1GB"
+"""
 import sys
 import subprocess
 try:
@@ -41,8 +44,8 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "Gumbel-Sigmoid", 
-          "prior_constraint: DAG reconstruction",], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "Gumbel-Sigmoid", "without_sparsity",]
+        #   "prior_constraint: DAG reconstruction",], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -52,10 +55,6 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    # parser.add_argument("--hidden_dim", default=4, type=int,
-    #                     help="hidden dimensions for MLP")
-    # parser.add_argument("--num_layer", default=5, type=int,
-    #                     help="hidden dimensions for MLP")
     parser.add_argument("--latent_dim", default=5, type=int,
                         help="dimension of each latent node")
     
@@ -66,21 +65,21 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--penalty', default='lasso', type=str,
-                        help='penalty type for sparity: lasso, MCP')
-    parser.add_argument('--lambda1', default=0.1, type=float,
-                        help='coefficient of sparsity penalty')
-    parser.add_argument('--gamma', default=2, type=float,
-                        help='coefficient of MCP penalty')
-    parser.add_argument('--beta', default=0.1, type=float,
+    # parser.add_argument('--penalty', default='without', type=str,
+    #                     help='penalty type for sparity: without, lasso, MCP')
+    # parser.add_argument('--lambda1', default=0.1, type=float,
+    #                     help='coefficient of sparsity penalty')
+    # parser.add_argument('--gamma', default=2, type=float,
+    #                     help='coefficient of MCP penalty')
+    parser.add_argument('--beta', default=10, type=float,
                         help='coefficient of KL-divergence')
-    parser.add_argument('--lambda2', default=0.1, type=float,
-                        help='coefficient of prior constraint')
-    parser.add_argument('--w_threshold', default=0.01, type=float,
-                        help='threshold for weighted adjacency matrix')
+    # parser.add_argument('--lambda2', default=0.1, type=float,
+    #                     help='coefficient of prior constraint')
+    parser.add_argument('--w_threshold', default=0.1, type=float,
+                        help='threshold for adjacency matrix')
     
-    parser.add_argument('--temperature', default=0.2, type=float,
-                        help='temperature for Gumbel-Sigmoid')
+    # parser.add_argument('--temperature', default=0.5, type=float,
+    #                     help='temperature for Gumbel-Sigmoid')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
@@ -94,77 +93,77 @@ def train(dataloader, model, config, optimizer, device):
         'loss': [], 
         'recon': [],
         'KL': [],
-        'prior': [],
-        'Sparsity': [],
+        # 'prior': [],
+        # 'Sparsity': [],
     }
     
-    # for i in tqdm.tqdm(range(len(train_x) // config["batch_size"]), desc="inner loop"):
     for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
-        # idx = np.random.choice(range(len(train_x)), config["batch_size"])
-        # batch = torch.FloatTensor(train_x[idx])
-        # batch = batch.permute((0, 3, 1, 2))
         
         batch = batch[0]
         # batch.to(device)
         if config["cuda"]:
             batch = batch.cuda()
+        # break
         
-        # with torch.autograd.set_detect_anomaly(True):    
-        optimizer.zero_grad()
-        
-        # exog_mean, exog_logvar, latent, B, xhat1, xhat2 = model(batch)
-        exog_mean, latent, B, xhat = model(batch)
-        
-        loss_ = []
-        
-        """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
-        # recon += 0.5 * torch.pow(xhat2 - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
-        recon *= 0.5
-        # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
-        loss_.append(('recon', recon))
+        with torch.autograd.set_detect_anomaly(True):    
+            optimizer.zero_grad()
+            
+            exog, latent, B, xhat = model(batch)
+            
+            loss_ = []
+            
+            """reconstruction"""
+            recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
+            # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
+            loss_.append(('recon', recon))
 
-        """KL-divergence"""
-        KL = torch.pow(exog_mean, 2).sum(axis=1)
-        # KL -= exog_logvar.sum(axis=1)
-        # KL += torch.exp(exog_logvar).sum(axis=1)
-        # KL -= config["latent_dim"]
-        KL *= 0.5
-        KL = KL.mean()
-        loss_.append(('KL', KL))
-        
-        """prior constraint""" # DAG reconstruction
-        prior = (0.5 * torch.pow(latent - torch.matmul(latent, B), 2).sum(axis=1)).mean()
-        loss_.append(('prior', prior))
-        
-        """Sparsity"""
-        if config["penalty"] == "lasso":
-            sparsity = torch.linalg.norm(B, ord=1)
-            loss_.append(('Sparsity', sparsity))
-            loss = recon + config["beta"] * KL + config["lambda2"] * prior + config["lambda1"] * sparsity
+            """KL-divergence"""
+            KL = torch.pow(exog, 2).sum(axis=1)
+            # KL = exog_logvar.sum(axis=1)
+            # KL += torch.exp(exog_logvar).sum(axis=1)
+            # KL -= config["latent_dim"]
+            KL *= 0.5
+            KL = KL.mean()
+            loss_.append(('KL', KL))
             
-        elif config["penalty"] == "MCP":
-            p1 = config["lambda"] * torch.abs(B)
-            p1 -= torch.pow(B, 2) / (2. * config["gamma"])
-            p1 = p1[torch.abs(B) <= config["gamma"] * config["lambda"]].sum()
+            # """prior constraint""" # DAG reconstruction
+            # prior = (0.5 * torch.pow(inverse_sigmoid_latent - torch.matmul(inverse_sigmoid_latent, B), 2).sum(axis=1)).mean()
+            # loss_.append(('prior', prior))
             
-            p2 = (torch.abs(B) > config["gamma"] * config["lambda"]).sum().float()
-            p2 *= torch.tensor(0.5 * config["gamma"] * (config["lambda"] ** 2))
+            # """Sparsity"""
+            # if config["penalty"] == "without":
+            #     loss = recon + config["beta"] * KL + config["lambda2"] * prior
+                
+            # else:
+            #     if config["penalty"] == "lasso":
+            #         sparsity = torch.linalg.norm(B, ord=1)
+            #         loss_.append(('Sparsity', sparsity))
+            #         loss = recon + config["beta"] * KL + config["lambda2"] * prior + config["lambda1"] * sparsity
+                    
+            #     elif config["penalty"] == "MCP":
+            #         p1 = config["lambda"] * torch.abs(B)
+            #         p1 -= torch.pow(B, 2) / (2. * config["gamma"])
+            #         p1 = p1[torch.abs(B) <= config["gamma"] * config["lambda"]].sum()
+                    
+            #         p2 = (torch.abs(B) > config["gamma"] * config["lambda"]).sum().float()
+            #         p2 *= torch.tensor(0.5 * config["gamma"] * (config["lambda"] ** 2))
+                    
+            #         sparsity = p1 + p2
+            #         loss_.append(('Sparsity', sparsity))
+            #         loss = recon + config["beta"] * KL + config["lambda2"] * prior + sparsity
+                    
+            #     else:
+            #         raise ValueError("Unknown penalty type.")
+            # loss_.append(('loss', loss))
             
-            sparsity = p1 + p2
-            loss_.append(('Sparsity', sparsity))
-            loss = recon + config["beta"] * KL + config["lambda2"] * prior + sparsity
+            loss = recon + config["beta"] * KL
             
-        else:
-            raise ValueError("Unknown penalty type.")
-        loss_.append(('loss', loss))
-        
-        loss.backward()
-        optimizer.step()
-        
-        """accumulate losses"""
-        for x, y in loss_:
-            logs[x] = logs.get(x) + [y.item()]
+            loss.backward()
+            optimizer.step()
+            
+            """accumulate losses"""
+            for x, y in loss_:
+                logs[x] = logs.get(x) + [y.item()]
     
     return logs, B, xhat
 #%%
