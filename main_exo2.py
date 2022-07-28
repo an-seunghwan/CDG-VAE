@@ -66,21 +66,18 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--penalty', default='lasso', type=str,
-                        help='penalty type for sparity: without, lasso, MCP')
+    parser.add_argument('--noise', default=0.5, type=float,
+                        help='std of exogenous posterior distribution')
+    parser.add_argument('--penalty', default='without', type=str,
+                        help='penalty type for sparity: without, lasso')
     parser.add_argument('--lambda1', default=0.1, type=float,
                         help='coefficient of sparsity penalty')
-    parser.add_argument('--gamma', default=2, type=float,
-                        help='coefficient of MCP penalty')
     parser.add_argument('--beta', default=5, type=float,
                         help='coefficient of KL-divergence')
     # parser.add_argument('--lambda2', default=0.1, type=float,
     #                     help='coefficient of prior constraint')
     parser.add_argument('--w_threshold', default=0.1, type=float,
                         help='threshold for adjacency matrix')
-    
-    parser.add_argument('--temperature', default=0.2, type=float,
-                        help='temperature for Gumbel-Sigmoid')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
