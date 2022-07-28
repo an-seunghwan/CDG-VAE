@@ -1,5 +1,5 @@
 project: (causal)VAE
-program: main_exo1.py
+program: main_exo2.py
 method: grid
 metric:
   goal: minimize
@@ -11,12 +11,13 @@ parameters:
   #   values: ["lasso"]
   # batch_size:
   #   values: [32, 64, 128]
-  # lambda1:
-  #   values: [0.01, 0.1, 1, 10]
+  lambda1:
+    values: [0.01, 0.1, 1, 5, 10]
   # lambda2:
   #   values: [0.01, 0.1, 1, 10]
   beta:
-    values: [0.01, 0.1, 1, 10, 20, 50]
+    # values: [0.1, 1, 5, 10]
+    values: [5]
   # w_threshold:
   #   values: [0.01, 0.1]
   # gamma:

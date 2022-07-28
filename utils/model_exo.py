@@ -27,9 +27,9 @@ class VAE(nn.Module):
         Y = torch.zeros((config["latent_dim"], config["latent_dim"]))
         for i in range(config["latent_dim"]):
             for j in range(config["latent_dim"]):
-                # Y[i, j] = p[j] - p[i]
-                if i != j:
-                    Y[i, j] = (p[j] - p[i]) / np.abs(p[j] - p[i])
+                Y[i, j] = p[j] - p[i]
+                # if i != j:
+                #     Y[i, j] = (p[j] - p[i]) / np.abs(p[j] - p[i])
         self.ReLU_Y = torch.nn.ReLU()(Y).to(device)
 
         self.W = nn.Parameter(
@@ -49,12 +49,12 @@ class VAE(nn.Module):
         self.tau = config["temperature"]
         self.I = torch.eye(config["latent_dim"]).to(device)
     
-    def sample_gumbel(self, shape, eps=1e-20):
-        U = torch.rand(shape).to(self.device)
-        g1 = -torch.log(-torch.log(U + eps) + eps)
-        U = torch.rand(shape).to(self.device)
-        g2 = -torch.log(-torch.log(U + eps) + eps)
-        return g1 - g2
+    # def sample_gumbel(self, shape, eps=1e-20):
+    #     U = torch.rand(shape).to(self.device)
+    #     g1 = -torch.log(-torch.log(U + eps) + eps)
+    #     U = torch.rand(shape).to(self.device)
+    #     g2 = -torch.log(-torch.log(U + eps) + eps)
+    #     return g1 - g2
     
     def forward(self, input):
         # h = self.encoder(nn.Flatten()(input))
@@ -63,7 +63,9 @@ class VAE(nn.Module):
         # exog_logvar = torch.tanh(exog_logvar) * 0.5 # variance scaling (exp(-0.5) ~ exp(0.5))
 
         """Latent Generating Process"""
-        B = torch.sigmoid((self.W + self.sample_gumbel(self.W.shape)) / self.tau) * self.ReLU_Y # B \in {0, 1}
+        # B = torch.sigmoid((self.W + self.sample_gumbel(self.W.shape)) / self.tau) # B \in {0, 1}
+        B = torch.sigmoid(self.W / self.tau) # B \in {0, 1}
+        B = (B * 2 - 1) * self.ReLU_Y # B \in {-1, 1}
         # B = torch.sigmoid(self.W) * self.ReLU_Y # B \in [0, 1]
         # B = self.W * self.ReLU_Y # B \in [-inf, inf]
         
