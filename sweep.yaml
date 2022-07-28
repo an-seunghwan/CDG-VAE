@@ -10,10 +10,10 @@ parameters:
   noise:
     values: [0.1, 0.3, 0.5]
   lambda1:
-    values: [0.1, 1, 5, 10]
+    values: [0.01, 0.05]
   beta:
     values: [0.1, 1, 5, 10]
   lambda2:
     values: [0.1, 1, 5, 10]
   w_threshold:
-    values: [0.01, 0.1]
+    values: [0.1]

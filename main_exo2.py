@@ -228,7 +228,6 @@ def main():
     # B_est = (model.W * model.ReLU_Y * model.mask).cpu().detach().numpy()
     B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
     B_est[np.abs(B_est) < config["w_threshold"]] = 0.
-    B_est = B_est.cpu().detach().numpy()
     B_est = B_est.astype(float).round(2)
     
     nonzero_ratio = (B_est != 0).sum() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
