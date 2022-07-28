@@ -44,8 +44,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["nonlinear"]
-        # "prior_constraint: DAG reconstruction",], 
+    tags=["nonlinear", "prior_constraint: DAG reconstruction"]
         # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
@@ -68,14 +67,14 @@ def get_args(debug):
     
     parser.add_argument('--noise', default=0.5, type=float,
                         help='std of exogenous posterior distribution')
-    parser.add_argument('--penalty', default='without', type=str,
-                        help='penalty type for sparity: without, lasso')
-    parser.add_argument('--lambda1', default=0.1, type=float,
+    parser.add_argument('--penalty', default='lasso', type=str,
+                        help='penalty type for sparity')
+    parser.add_argument('--lambda1', default=1, type=float,
                         help='coefficient of sparsity penalty')
     parser.add_argument('--beta', default=5, type=float,
                         help='coefficient of KL-divergence')
-    # parser.add_argument('--lambda2', default=0.1, type=float,
-    #                     help='coefficient of prior constraint')
+    parser.add_argument('--lambda2', default=1, type=float,
+                        help='coefficient of prior constraint')
     parser.add_argument('--w_threshold', default=0.1, type=float,
                         help='threshold for adjacency matrix')
     
@@ -91,14 +90,13 @@ def train(dataloader, model, config, optimizer, device):
         'loss': [], 
         'recon': [],
         'KL': [],
-        # 'prior': [],
+        'prior': [],
         'Sparsity': [],
     }
     
     for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
         
         batch = batch[0]
-        # batch.to(device)
         if config["cuda"]:
             batch = batch.cuda()
         # break
@@ -106,17 +104,17 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            exog, latent, B, xhat = model(batch)
+            exog_mean, latent, B, inversed_latent, xhat = model(batch)
             
             loss_ = []
             
             """reconstruction"""
             recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
-            # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
             loss_.append(('recon', recon))
 
             """KL-divergence"""
-            KL = torch.pow(exog, 2).sum(axis=1)
+            # prior = Gaussian(0, config["noise"]^2)
+            KL = torch.pow(exog_mean, 2).sum(axis=1) / (config["noise"] ** 2)
             # KL += exog_logvar.sum(axis=1)
             # KL += torch.exp(exog_logvar).sum(axis=1)
             # KL -= config["latent_dim"]
@@ -124,38 +122,19 @@ def train(dataloader, model, config, optimizer, device):
             KL = KL.mean()
             loss_.append(('KL', KL))
             
-            # """prior constraint""" # DAG reconstruction
-            # prior = (0.5 * torch.pow(inverse_sigmoid_latent - torch.matmul(inverse_sigmoid_latent, B), 2).sum(axis=1)).mean()
-            # loss_.append(('prior', prior))
+            """prior constraint: DAG reconstruction""" 
+            # inversed_latent = inversed_latent - inversed_latent.mean(axis=0) # standardization
+            prior = (0.5 * torch.pow(inversed_latent - torch.matmul(inversed_latent, B), 2).sum(axis=1)).mean()
+            loss_.append(('prior', prior))
             
             """Sparsity"""
-            if config["penalty"] == "without":
-                loss = recon + config["beta"] * KL
-                
+            if config["penalty"] == "lasso":
+                sparsity = torch.linalg.norm(B, ord=1)
+                loss_.append(('Sparsity', sparsity))
+                loss = recon + config["beta"] * KL + config["lambda1"] * sparsity + config["lambda2"] * prior
             else:
-                if config["penalty"] == "lasso":
-                    sparsity = torch.linalg.norm(B, ord=1)
-                    loss_.append(('Sparsity', sparsity))
-                    loss = recon + config["beta"] * KL + config["lambda1"] * sparsity
-                    
-                elif config["penalty"] == "MCP":
-                    p1 = config["lambda"] * torch.abs(B)
-                    p1 -= torch.pow(B, 2) / (2. * config["gamma"])
-                    p1 = p1[torch.abs(B) <= config["gamma"] * config["lambda"]].sum()
-                    
-                    p2 = (torch.abs(B) > config["gamma"] * config["lambda"]).sum().float()
-                    p2 *= torch.tensor(0.5 * config["gamma"] * (config["lambda"] ** 2))
-                    
-                    sparsity = p1 + p2
-                    loss_.append(('Sparsity', sparsity))
-                    loss = recon + config["beta"] * KL + sparsity
-                    
-                else:
-                    raise ValueError("Unknown penalty type.")
+                raise ValueError("Unknown penalty type.")
             loss_.append(('loss', loss))
-            
-            # loss = recon + config["beta"] * KL
-            # loss_.append(('loss', loss))
             
             loss.backward()
             optimizer.step()
@@ -163,7 +142,7 @@ def train(dataloader, model, config, optimizer, device):
             """accumulate losses"""
             for x, y in loss_:
                 logs[x] = logs.get(x) + [y.item()]
-    
+                
     return logs, B, xhat
 #%%
 def main():
@@ -192,20 +171,9 @@ def main():
     del train_x
     del dataset
     
-    # plt.imshow(train_x[0])
-    # plt.show()
-
-    # wandb.run.summary['W_true'] = wandb.Table(data=pd.DataFrame(W_true))
-    # fig = viz_graph(W_true, size=(7, 7), show=config["fig_show"])
-    # wandb.log({'Graph': wandb.Image(fig)})
-    # fig = viz_heatmap(W_true, size=(5, 4), show=config["fig_show"])
-    # wandb.log({'heatmap': wandb.Image(fig)})
-    
     model = VAE(config, device)
     
     model.to(device)
-    # if config["cuda"]:
-    #     model.cuda()
 
     optimizer = torch.optim.Adam(
         model.parameters(), 
@@ -215,7 +183,6 @@ def main():
     wandb.watch(model, log_freq=50) # tracking gradients
     model.train()
     
-    # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
         logs, B, xhat = train(dataloader, model, config, optimizer, device)
         
@@ -259,9 +226,8 @@ def main():
     
     """post-process"""
     # B_est = (model.W * model.ReLU_Y * model.mask).cpu().detach().numpy()
-    # B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
-    # B_est[np.abs(B_est) < config["w_threshold"]] = 0.
-    B_est = (torch.sigmoid(model.W / model.tau) * 2 - 1) * model.ReLU_Y # without Gumbel-Sigmoid (-1 to 1)
+    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
+    B_est[np.abs(B_est) < config["w_threshold"]] = 0.
     B_est = B_est.cpu().detach().numpy()
     B_est = B_est.astype(float).round(2)
     

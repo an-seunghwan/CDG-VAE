@@ -34,6 +34,8 @@ class VAE(nn.Module):
                 torch.zeros((config["latent_dim"], config["latent_dim"]), 
                             requires_grad=True).to(device)) 
 
+        self.batchnorm = nn.BatchNorm1d(config["latent_dim"])
+        
         """decoder"""
         self.decoder = nn.Sequential(
             nn.Linear(config["latent_dim"], 300),
@@ -52,13 +54,14 @@ class VAE(nn.Module):
 
         """Latent Generating Process"""
         B = self.W * self.ReLU_Y # B \in [-inf, inf]
-        latent = torch.tanh(torch.matmul(epsilon, torch.inverse(self.I - B)))
+        h = self.batchnorm(torch.matmul(epsilon, torch.inverse(self.I - B))) # standardization
+        latent = torch.tanh(h)
 
-        inverse_tanh_latent = 0.5 * torch.log((1. + latent) / (1. - latent) + 1e-8)
+        inversed_latent = 0.5 * torch.log((1. + latent) / (1. - latent) + 1e-8)
 
         xhat = self.decoder(latent).view(-1, 96, 96, 3)
 
-        return exog_mean, latent, B, inverse_tanh_latent, xhat
+        return exog_mean, latent, B, inversed_latent, xhat
 #%%
 def main():
     config = {
@@ -72,11 +75,11 @@ def main():
         print(x.shape)
         
     batch = torch.rand(config["n"], 96, 96, 3)
-    exog_mean, latent, B, inverse_tanh_latent, xhat = model(batch)
+    exog_mean, latent, B, inversed_latent, xhat = model(batch)
     
     assert exog_mean.shape == (config["n"], config["latent_dim"])
     assert latent.shape == (config["n"], config["latent_dim"])
-    assert inverse_tanh_latent.shape == (config["n"], config["latent_dim"])
+    assert inversed_latent.shape == (config["n"], config["latent_dim"])
     assert B.shape == (config["latent_dim"], config["latent_dim"])
     assert xhat.shape == (config["n"], 96, 96, 3)
     
