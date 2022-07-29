@@ -23,7 +23,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_exo import (
+from utils.model_vanilla import (
     VAE
 )
 #%%

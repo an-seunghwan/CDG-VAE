@@ -18,24 +18,9 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
-            nn.Linear(300, config["latent_dim"]),
+            nn.Linear(300, 2 * config["latent_dim"]),
         ).to(device)
 
-        """logit of adjacency matrix"""
-        p = {x:y for x,y in zip(range(config["latent_dim"]), range(config["latent_dim"]))}
-        # build ReLU(Y)
-        Y = torch.zeros((config["latent_dim"], config["latent_dim"]))
-        for i in range(config["latent_dim"]):
-            for j in range(config["latent_dim"]):
-                Y[i, j] = p[j] - p[i]
-        self.ReLU_Y = torch.nn.ReLU()(Y).to(device)
-
-        self.W = nn.Parameter(
-                torch.zeros((config["latent_dim"], config["latent_dim"]), 
-                            requires_grad=True).to(device)) 
-
-        self.batchnorm = nn.BatchNorm1d(config["latent_dim"])
-        
         """decoder"""
         self.decoder = nn.Sequential(
             nn.Linear(config["latent_dim"], 300),
@@ -46,28 +31,17 @@ class VAE(nn.Module):
             nn.Tanh()
         ).to(device)
 
-        self.I = torch.eye(config["latent_dim"]).to(device)
-    
     def forward(self, input):
-        exog_mean = self.encoder(nn.Flatten()(input))
-        epsilon = exog_mean + self.config["noise"] * torch.randn(exog_mean.shape).to(self.device)
-
-        """Latent Generating Process"""
-        B = self.W * self.ReLU_Y # B \in [-inf, inf]
-        h = self.batchnorm(torch.matmul(epsilon, torch.inverse(self.I - B))) # standardization
-        latent = torch.tanh(h)
-
-        inversed_latent = 0.5 * torch.log((1. + latent) / (1. - latent) + 1e-8)
-
+        h = self.encoder(nn.Flatten()(input))
+        exog_mean, exog_logvar = torch.split(h, self.config["latent_dim"], dim=1)
+        latent = exog_mean + torch.exp(exog_logvar / 2.) * torch.randn(exog_logvar.shape).to(self.device)
         xhat = self.decoder(latent).view(-1, 96, 96, 3)
-
-        return exog_mean, latent, B, inversed_latent, xhat
+        return exog_mean, exog_logvar, latent, xhat
 #%%
 def main():
     config = {
         "n": 100,
         "latent_dim": 5,
-        "noise": 0.5,
     }
     
     model = VAE(config, 'cpu')
@@ -75,12 +49,11 @@ def main():
         print(x.shape)
         
     batch = torch.rand(config["n"], 96, 96, 3)
-    exog_mean, latent, B, inversed_latent, xhat = model(batch)
+    exog_mean, exog_logvar, latent, xhat = model(batch)
     
     assert exog_mean.shape == (config["n"], config["latent_dim"])
+    assert exog_logvar.shape == (config["n"], config["latent_dim"])
     assert latent.shape == (config["n"], config["latent_dim"])
-    assert inversed_latent.shape == (config["n"], config["latent_dim"])
-    assert B.shape == (config["latent_dim"], config["latent_dim"])
     assert xhat.shape == (config["n"], 96, 96, 3)
     
     print("Model test pass!")
