@@ -23,9 +23,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_vanilla import (
-    VAE
-)
+from utils.trac_exp import trace_expm
 #%%
 """
 wandb artifact cache cleanup "1GB"
@@ -44,83 +42,96 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["vanilla"]
+    tags=["true_DAG"]
 )
 #%%
 import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--seed', type=int, default=1, 
+    parser.add_argument('--seed', type=int, default=18, 
                         help='seed for repeatable results')
-    
-    parser.add_argument("--latent_dim", default=2, type=int,
-                        help="dimension of each latent node")
-    
-    parser.add_argument('--epochs', default=100, type=int,
-                        help='maximum iteration')
+
+    parser.add_argument('--d', default=4, type=int,
+                        help='the number of nodes')
     parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size')
+    
+    parser.add_argument('--rho', default=1, type=float,
+                        help='rho')
+    parser.add_argument('--alpha', default=0, type=float,
+                        help='alpha')
+    parser.add_argument('--h', default=np.inf, type=float,
+                        help='h')
+    
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
-    
-    parser.add_argument('--beta', default=5, type=float,
-                        help='coefficient of KL-divergence')
-    parser.add_argument('--lambda2', default=1, type=float,
-                        help='threshold for adjacency matrix')
-    
-    parser.add_argument('--fig_show', default=False, type=bool)
+    parser.add_argument('--max_iter', default=100, type=int,
+                        help='maximum iteration')
+    parser.add_argument('--epochs', default=100, type=int,
+                        help='maximum iteration')
+    parser.add_argument('--h_tol', default=1e-8, type=float,
+                        help='h value tolerance')
+    parser.add_argument('--w_threshold', default=0.3, type=float,
+                        help='weight adjacency matrix threshold')
+    parser.add_argument('--lambda', default=0.1, type=float,
+                        help='weight of LASSO regularization')
+    parser.add_argument('--progress_rate', default=0.25, type=float,
+                        help='progress rate')
+    parser.add_argument('--rho_max', default=1e+16, type=float,
+                        help='rho max')
+    parser.add_argument('--rho_rate', default=2, type=float,
+                        help='rho rate')
 
     if debug:
         return parser.parse_args(args=[])
     else:    
         return parser.parse_args()
 #%%
-def train(dataloader, model, config, optimizer, device):
+def h_fun(W):
+    """Evaluate DAGness constraint"""
+    h = trace_expm(W * W) - W.shape[0]
+    return h
+
+def train(dataloader, B_est, alpha, rho, config, optimizer):
     logs = {
         'loss': [], 
         'recon': [],
-        'KL': [],
+        'L1': [],
+        'aug': [],
     }
     
-    for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
+    # for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
+    for batch in iter(dataloader):
         
         batch = batch[0]
-        if config["cuda"]:
-            batch = batch.cuda()
-        # break
         
-        with torch.autograd.set_detect_anomaly(True):    
-            optimizer.zero_grad()
+        """Evaluate value and gradient of augmented Lagrangian."""
+        loss_ = []
+        
+        R = batch - batch.matmul(B_est)
+        recon = 0.5 * (R ** 2).sum(axis=1).mean()
+        loss_.append(('recon', recon))
+        
+        L1 = config["lambda"] * torch.norm(B_est, p=1)
+        loss_.append(('L1', L1))
+        
+        h = h_fun(B_est)
+        aug = 0.5 * rho * (h ** 2)
+        aug += alpha * h
+        loss_.append(('aug', aug))
             
-            exog_mean, exog_logvar, latent, xhat = model(batch)
-            
-            loss_ = []
-            
-            """reconstruction"""
-            recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
-            loss_.append(('recon', recon))
-
-            """KL-divergence"""
-            KL = torch.pow(exog_mean, 2).sum(axis=1)
-            KL -= exog_logvar.sum(axis=1)
-            KL += torch.exp(exog_logvar).sum(axis=1)
-            KL -= config["latent_dim"]
-            KL *= 0.5
-            KL = KL.mean()
-            loss_.append(('KL', KL))
-            
-            loss = recon + config["beta"] * KL
-            loss_.append(('loss', loss))
-            
-            loss.backward()
-            optimizer.step()
-            
-            """accumulate losses"""
-            for x, y in loss_:
-                logs[x] = logs.get(x) + [y.item()]
-                
-    return logs, xhat
+        loss = sum([y for _, y in loss_])
+        loss_.append(('loss', loss))
+        
+        loss.backward()
+        optimizer.step()
+        
+        """accumulate losses"""
+        for x, y in loss_:
+            logs[x] = logs.get(x) + [y.item()]
+    
+    return logs, B_est
 #%%
 def main():
     config = vars(get_args(debug=True)) # default configuration
@@ -134,104 +145,62 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     train_imgs = os.listdir('./utils/causal_data/pendulum/train')
-    train_x = []
-    for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-        train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
-    train_x = (np.array(train_x).astype(float) - 127.5) / 127.5
+    label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+    label = label - label.mean(axis=0) # logit
+    label = label / label.std(axis=0)
     
-    train_x = torch.Tensor(train_x) 
-    dataset = TensorDataset(train_x) 
+    label = torch.Tensor(label) 
+    dataset = TensorDataset(label) 
     dataloader = DataLoader(dataset, 
                             batch_size=config["batch_size"],
                             shuffle=True)
-    del train_imgs
-    del train_x
-    del dataset
     
-    model = VAE(config, device)
-    
-    model.to(device)
+    B_est = torch.zeros((config["d"], config["d"]), 
+                        requires_grad=True)
 
-    optimizer = torch.optim.Adam(
-        model.parameters(), 
-        lr=config["lr"]
-    )
+    # initial values
+    rho = config["rho"]
+    alpha = config["alpha"]
+    h = config["h"]
+
+    optimizer = torch.optim.Adam([B_est], lr=config["lr"])
     
-    wandb.watch(model, log_freq=50) # tracking gradients
-    model.train()
-    
-    for epoch in range(config["epochs"]):
-        logs, xhat = train(dataloader, model, config, optimizer, device)
+    for iteration in range(config["max_iter"]):
+        """primal update"""
+        h_old = np.inf
+        while rho < config["rho_max"]:
+            for epoch in tqdm.tqdm(range(config["epochs"]), desc="primal update"):
+            # while True:
+                logs, B_est = train(dataloader, B_est, alpha, rho, config, optimizer)
+                
+                # """stopping rule: no change in weight estimation (convergence)"""
+                # with torch.no_grad():
+                #     h_new = h_fun(B_est).item()
+                # if abs(h_old - h_new) < 1e-8: 
+                #     break
+                # h_old = h_new
         
-        print_input = "[epoch {:03d}]".format(epoch + 1)
+            with torch.no_grad():
+                h_new = h_fun(B_est).item()
+            if h_new > config["progress_rate"] * h:
+                rho *= config["rho_rate"]
+            else:
+                break
+        
+        """dual ascent step"""
+        h = h_new
+        alpha += rho * h
+        
+        print_input = "[iteration {:03d}]".format(iteration + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
         print(print_input)
         
         """update log"""
         wandb.log({x : np.mean(y) for x, y in logs.items()})
         
-        if epoch % 10 == 0:
-            plt.figure(figsize=(4, 4))
-            for i in range(9):
-                plt.subplot(3, 3, i+1)
-                # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
-                plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
-                plt.axis('off')
-            plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
-            plt.close()
-    
-    """reconstruction result"""
-    fig = plt.figure(figsize=(4, 4))
-    for i in range(9):
-        plt.subplot(3, 3, i+1)
-        # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
-        plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
-        plt.axis('off')
-    plt.savefig('./assets/image.png')
-    plt.close()
-    wandb.log({'reconstruction': wandb.Image(fig)})
-    
-    """model save"""
-    torch.save(model.state_dict(), './assets/vanilla_model.pth')
-    artifact = wandb.Artifact('vanilla_model', type='model') # description=""
-    artifact.add_file('./assets/vanilla_model.pth')
-    wandb.log_artifact(artifact)
-    
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v16', type='model')
-    # model_dir = artifact.download()
-    # model = VAE(config, device)
-    # model.load_state_dict(torch.load(model_dir + '/model.pth'))
-    
-    # test dataset
-    test_imgs = os.listdir('./utils/causal_data/pendulum/test')
-    test_x = []
-    for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-        test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
-    test_x = torch.Tensor(test_x)
-    if config["cuda"]:
-        test_x = test_x.cuda()
-    
-    exog_mean, exog_logvar, latent, xhat = model(test_x)
-    latent = latent.detach().cpu().numpy()
-    
-    plt.scatter(latent[:, 0], latent[:, 1])
-    plt.savefig('./assets/disen_latent.png')
-    plt.close()
-    
-    # from sklearn.decomposition import PCA
-    # from sklearn.manifold import TSNE
-
-    # pca = PCA(n_components = 2)
-    # pc = pca.fit_transform(pd.DataFrame(latent))
-    # tsne = TSNE(n_components = 2).fit_transform(pd.DataFrame(latent))
-    
-    # # plt.scatter(pc[:, 0], pc[:, 1])
-    # plt.scatter(tsne[:, 0], tsne[:, 1])
-    # # plt.scatter(latent[:, 0], latent[:, 3])
-    # plt.savefig('./assets/disen_latent.png')
-    # plt.close()
+        """stopping rule"""
+        if h <= config["h_tol"] or rho >= config["rho_max"]:
+            break
     
     wandb.run.finish()
 #%%
