@@ -19,62 +19,66 @@ warnings.filterwarnings('ignore')
 if not os.path.exists('./causal_data/pendulum/'): 
     os.makedirs('./causal_data/pendulum/train/')
     os.makedirs('./causal_data/pendulum/test/')
-
-def projection(theta, phi, x, y, base = -0.5):
-    b = y - x * math.tan(phi)
-    shade = (base - b) / math.tan(phi)
-    return shade
 #%%
-scale = np.array([[0,44],[100,40],[7,7.5],[10,10]])
 count = 0
-train = pd.DataFrame(columns=['i', 'j', 'shade','mid'])
-test = pd.DataFrame(columns=['i', 'j', 'shade','mid'])
-for i in tqdm.tqdm(range(-40, 44)): # pendulum
-    for j in range(60, 148): # light
-        if j == 100:
-            continue
-        plt.rcParams['figure.figsize'] = (1.0, 1.0)
+train = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
+test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
+#%%
+varphi = -0.1 # -1 ~ 1
+theta = 0.1 # -1 ~ 1
+center = (10, 10.5)
+threshold = 45
+l = 8
+for varphi in tqdm.tqdm(np.linspace(-1, 1, 100)):
+    for theta in np.linspace(-1, 1, 100):
+        objects = []
         
-        theta = i*math.pi/200.0
-        phi = j*math.pi/200.0
-        x = 10 + 8*math.sin(theta)
-        y = 10.5 - 8*math.cos(theta)
+        light = center[0] - center[1] * math.tan(math.radians(varphi * threshold))
+        ball = (center[0] + l * math.sin(math.radians(theta * threshold)),
+                center[1] - l * math.cos(math.radians(theta * threshold)))
 
-        ball = plt.Circle((x,y), 1.5, color = 'firebrick')
-        gun = plt.Polygon(([10,10.5],[x,y]), color = 'black', linewidth = 3)
+        plt.rcParams['figure.figsize'] = (1.0, 1.0)
+                
+        gun = plt.Polygon(([10, 10.5], ball), color = 'black', linewidth = 3)
+        pendulum = plt.Circle(ball, 1.5, color = 'firebrick')
+        sun = plt.Circle((light, 20.5), 3, color = 'orange')
 
-        light = projection(theta, phi, 10, 10.5, 20.5)
-        sun = plt.Circle((light,20.5), 3, color = 'orange')
+        ball_x = center[0] + (l + 1.5) * math.sin(math.radians(theta * threshold))
+        ball_y = center[0] - (l + 1.5) * math.cos(math.radians(theta * threshold))
 
-        #calculate the mid index of 
-        ball_x = 10+9.5*math.sin(theta)
-        ball_y = 10.5-9.5*math. cos(theta)
-        mid = (projection(theta, phi, 10.0, 10.5)+projection(theta, phi, ball_x, ball_y))/2
-        shade = max(3,abs(projection(theta, phi, 10.0, 10.5)-projection(theta, phi, ball_x, ball_y)))
+        tan_phi = light - ball[0]
+        tan_phi /= 20.5 - ball[1]
+        shadow_start = center[0] + center[1] * math.tan(math.radians(varphi * threshold))
+        length = light - 20.5 * tan_phi - shadow_start
 
-        shadow = plt.Polygon(([mid - shade/2.0, -0.5],[mid + shade/2.0, -0.5]), color = 'black', linewidth = 3)
+        shadow = plt.Polygon(([shadow_start, -0.5], [shadow_start + length, -0.5]), color = 'black', linewidth = 4)
+        position = shadow_start + length / 2
+        
+        objects.append(('light', light))
+        objects.append(('theta', theta))
+        objects.append(('length', length))
+        objects.append(('position', position))
+        name = '_'.join([str(int(y)) for x,y in objects])
         
         ax = plt.gca()
-        ax.add_artist(gun)
-        ax.add_artist(ball)
         ax.add_artist(sun)
+        ax.add_artist(gun)
+        ax.add_artist(pendulum)
         ax.add_artist(shadow)
         ax.set_xlim((0, 20))
         ax.set_ylim((-1, 21))
-        new=pd.DataFrame({
-                        'i':(i-scale[0][0])/(scale[0][1]-0),
-                        'j':(j-scale[1][0])/(scale[1][1]-0),
-                        'shade':(shade-scale[2][0])/(scale[2][1]-0),
-                        'mid':(mid-scale[2][0])/(scale[2][1]-0)
-                        }, index=[1])
+        plt.axis('off')
+        
+        new = pd.DataFrame({x:y for x,y in objects}, index=[1])
         plt.axis('off')
         if count == 4:
-            plt.savefig('./causal_data/pendulum/test/a_' + str(int(i)) + '_' + str(int(j)) + '_' + str(int(shade)) + '_' + str(int(mid)) +'.png',dpi=96)
-            count = 0
-            train = train.append(new, ignore_index=True)
-        else:
-            plt.savefig('./causal_data/pendulum/train/a_' + str(int(i)) + '_' + str(int(j)) + '_' + str(int(shade)) + '_' + str(int(mid)) +'.png',dpi=96)
+            plt.savefig('./causal_data/pendulum/test/a_' + name +'.png',dpi=96)
             test = test.append(new, ignore_index=True)
+            count = 0
+        else:
+            plt.savefig('./causal_data/pendulum/train/a_' + name +'.png',dpi=96)
+            train = train.append(new, ignore_index=True)
+        # plt.show()
         plt.clf()
         count += 1
 #%%
