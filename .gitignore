@@ -6,4 +6,3 @@ wandb_api.txt
 artifacts
 *.pth
 tmp_image_*
-history
