@@ -54,7 +54,7 @@ class VectorQuantizer(nn.Module):
         
         return quantized_latent, vq_loss 
 #%%
-def checkerboard_mask(width, reverse=False):
+def checkerboard_mask(width, reverse=False, device='cpu'):
     """
     Reference:
     [1]: https://github.com/chrischute/real-nvp/blob/df51ad570baf681e77df4d2265c0f1eb1b5b646c/util/array_util.py#L78
@@ -68,7 +68,7 @@ def checkerboard_mask(width, reverse=False):
         mask (torch.tensor): Checkerboard mask of shape (1, width).
     """
     checkerboard = [j % 2 for j in range(width)]
-    mask = torch.tensor(checkerboard, requires_grad=False)
+    mask = torch.tensor(checkerboard, requires_grad=False).to(device)
     if reverse:
         mask = 1 - mask
     # Reshape to (1, width) for broadcasting with tensors of shape (B, W)
@@ -83,6 +83,7 @@ class CouplingLayer(nn.Module):
     """
     def __init__(self,
                  input_dim,
+                 device='cpu',
                  reverse=False,
                  hidden_dim=64,
                  s_act='tanh',
@@ -93,20 +94,20 @@ class CouplingLayer(nn.Module):
         s_act_func = activations[s_act]
         t_act_func = activations[t_act]
 
-        self.mask = checkerboard_mask(input_dim, reverse=reverse)
+        self.mask = checkerboard_mask(input_dim, reverse=reverse).to(device)
 
         self.scale_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), 
             s_act_func(),
             nn.Linear(hidden_dim, hidden_dim), 
             s_act_func(),
-            nn.Linear(hidden_dim, input_dim))
+            nn.Linear(hidden_dim, input_dim)).to(device)
         self.translate_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), 
             t_act_func(),
             nn.Linear(hidden_dim, hidden_dim), 
             t_act_func(),
-            nn.Linear(hidden_dim, input_dim))
+            nn.Linear(hidden_dim, input_dim)).to(device)
 
     def inverse(self, inputs):
         u = inputs * self.mask
@@ -138,13 +139,13 @@ class VAE(nn.Module):
         self.vq_layer = VectorQuantizer(self.config, device).to(device)
         
         self.B = B # weighted adjacency matrix
-        self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"])
+        self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
         # self.weight = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
         # self.bias = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
         
-        self.coupling_layer = [CouplingLayer(config["embedding_dim"], reverse=False),
-                            CouplingLayer(config["embedding_dim"], reverse=True),
-                            CouplingLayer(config["embedding_dim"], reverse=False)]
+        self.coupling_layer = [CouplingLayer(config["embedding_dim"], device, reverse=False).to(device),
+                            CouplingLayer(config["embedding_dim"], device, reverse=True).to(device),
+                            CouplingLayer(config["embedding_dim"], device, reverse=False).to(device)]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -160,7 +161,7 @@ class VAE(nn.Module):
         
     def inverse(self, input):
         u = input
-        u = 0.5 * torch.log((1. + u) / (1. - u) + 1e-8)
+        u = 0.5 * torch.log((1. + u) / (1. - u) + 1e-8) # tanh inverse function
         for c_layer in reversed(self.coupling_layer):
             u = c_layer.inverse(u)
         return u
@@ -194,7 +195,6 @@ def main():
         "num_embeddings": 10,
         "node": 4,
         "embedding_dim": 6,
-        "beta": 0.25,
     }
     
     B = torch.randn(config["node"], config["node"]) / 10 + torch.eye(config["node"])
