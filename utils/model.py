@@ -137,12 +137,14 @@ class VAE(nn.Module):
         """Build Vector Quantizer"""
         self.vq_layer = VectorQuantizer(self.config, device).to(device)
         
-        self.B = B
+        self.B = B # weighted adjacency matrix
         self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"])
+        # self.weight = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
+        # self.bias = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
         
         self.coupling_layer = [CouplingLayer(config["embedding_dim"], reverse=False),
-                        CouplingLayer(config["embedding_dim"], reverse=True),
-                        CouplingLayer(config["embedding_dim"], reverse=False)]
+                            CouplingLayer(config["embedding_dim"], reverse=True),
+                            CouplingLayer(config["embedding_dim"], reverse=False)]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -158,6 +160,7 @@ class VAE(nn.Module):
         
     def inverse(self, input):
         u = input
+        u = 0.5 * torch.log((1. + u) / (1. - u) + 1e-8)
         for c_layer in reversed(self.coupling_layer):
             u = c_layer.inverse(u)
         return u
@@ -171,9 +174,12 @@ class VAE(nn.Module):
 
         """Latent Generating Process"""
         causal_latent = torch.matmul(quantized_latent, torch.inverse(self.I - self.B))
-        # causal_latent = self.batchnorm(causal_latent)
+        causal_latent = causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous()
+        causal_latent = self.batchnorm(causal_latent)
+        causal_latent = causal_latent.view(-1, self.config["embedding_dim"], self.config["node"]).contiguous()
         causal_latent = causal_latent.permute(0, 2, 1).contiguous() # [batch, node, embedding_dim]
         causal_latent_orig = causal_latent.clone()
+        # invertible NN: generalized SEM
         for c_layer in self.coupling_layer:
             causal_latent = c_layer(causal_latent)
         causal_latent = torch.tanh(causal_latent)
@@ -203,10 +209,10 @@ def main():
     assert causal_latent.shape == (config["n"], config["node"] * config["embedding_dim"])
     assert xhat.shape == (config["n"], 96, 96, 3)
     
-    inversed_latent = 0.5 * torch.log((1. + causal_latent) / (1. - causal_latent) + 1e-8)
-    inversed_latent = model.inverse(inversed_latent.view(-1, config["node"], config["embedding_dim"]))
+    inversed_latent = model.inverse(causal_latent.view(-1, config["node"], config["embedding_dim"]))
     
-    assert torch.all(torch.isclose(causal_latent_orig, inversed_latent))
+    # assert torch.isclose(causal_latent_orig, inversed_latent).sum()
+    assert torch.abs(causal_latent_orig - inversed_latent).sum() < 1e-4
     
     print("Model test pass!")
 #%%
