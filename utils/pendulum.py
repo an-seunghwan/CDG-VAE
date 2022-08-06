@@ -9,6 +9,8 @@
 #%%
 import matplotlib.pyplot as plt
 import os
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 import math
 import numpy as np
 import pandas as pd 
