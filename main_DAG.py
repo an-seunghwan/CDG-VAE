@@ -149,7 +149,7 @@ def train(dataloader, model, B_est, mask, rho, alpha, config, optimizer):
     return logs, B_masked
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
