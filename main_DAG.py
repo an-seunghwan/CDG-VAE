@@ -45,7 +45,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["true_DAG"]
+    tags=["true_DAG", "GeneralizedSEM"]
 )
 #%%
 import argparse
