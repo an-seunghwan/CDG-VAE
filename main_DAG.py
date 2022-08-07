@@ -212,8 +212,9 @@ def main():
             break
     
     B_ = B_masked.detach().cpu().numpy()
-    B_ = B_ / np.max(np.abs(B_)) # normalize weighted adjacency matrix
-    B_[np.abs(B_) < config["w_threshold"]] = 0.
+    # thresholding
+    # B_ = B_ / np.max(np.abs(B_)) # normalize weighted adjacency matrix
+    # B_[np.abs(B_) < config["w_threshold"]] = 0.
     B_ = B_.astype(float).round(2)
     wandb.run.summary['Is DAG?'] = is_dag(B_)
     fig = viz_heatmap(np.flipud(B_), size=(5, 4))
