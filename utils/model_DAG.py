@@ -125,9 +125,9 @@ class INN(nn.Module):
         super(INN, self).__init__()
 
         self.coupling_layer = [
-            CouplingLayer(config["replicate"], device, reverse=False).to(device),
-            CouplingLayer(config["replicate"], device, reverse=True).to(device),
-            CouplingLayer(config["replicate"], device, reverse=False).to(device)
+            CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device),
+            CouplingLayer(config["replicate"], device, reverse=True, hidden_dim=config["hidden_dim"]).to(device),
+            CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device)
         ]
 
     def forward(self, inputs, inverse=False):
