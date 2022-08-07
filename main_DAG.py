@@ -19,6 +19,7 @@ from utils.model_DAG import GeneralizedLinearSEM
 from utils.simulation import (
     set_random_seed,
     is_dag,
+    count_accuracy
 )
 
 from utils.viz import (
@@ -148,7 +149,7 @@ def train(dataloader, model, B_est, mask, rho, alpha, config, optimizer):
     return logs, B_masked
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -211,14 +212,24 @@ def main():
         if h_current.item() <= config["h_tol"] or rho >= config["rho_max"]:
             break
     
+    """ground-truth"""
+    B_true = np.zeros((config["node"], config["node"]))
+    B_true[:2, 2:] = 1
+    B_true = B_true.astype(float)
+    
     B_ = B_masked.detach().cpu().numpy()
     # thresholding
-    # B_ = B_ / np.max(np.abs(B_)) # normalize weighted adjacency matrix
-    # B_[np.abs(B_) < config["w_threshold"]] = 0.
+    B_ = B_ / np.max(np.abs(B_)) # normalize weighted adjacency matrix
+    B_[np.abs(B_) < config["w_threshold"]] = 0.
     B_ = B_.astype(float).round(2)
     wandb.run.summary['Is DAG?'] = is_dag(B_)
     fig = viz_heatmap(np.flipud(B_), size=(5, 4))
     wandb.log({'heatmap_est': wandb.Image(fig)})
+    
+    B_bin = (B_ != 0).astype(float)
+    """accuracy"""
+    acc = count_accuracy(B_true, B_bin)
+    wandb.log(acc)
 
     wandb.run.finish()
 #%%

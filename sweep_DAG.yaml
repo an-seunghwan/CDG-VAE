@@ -12,6 +12,8 @@ parameters:
   replicate:
     values: [2, 4]
   lambda:
-    values: [0.1, 1, 5, 10]
+    values: [0.1, 1, 10]
   rho_rate:
     values: [2, 5, 10]
+  w_threshold:
+    values: [0.3, 0.5, 0.7]
