@@ -1,6 +1,6 @@
 #%%
 import torch
-from torch import nn
+from torch import inverse, nn
 #%% 
 #Copyright (C) 2021. Huawei Technologies Co., Ltd. All rights reserved.
 #This program is free software; 
@@ -140,6 +140,23 @@ class INN(nn.Module):
                 h = c_layer(h)
         return h
 #%%
+class GeneralizedLinearSEM(nn.Module):
+    def __init__(self,
+                 config,
+                 device='cpu'):
+        super(GeneralizedLinearSEM, self).__init__()
+
+        self.config = config
+
+        self.inn = [INN(config, device) for _ in range(config["node"])]
+        
+    def forward(self, inputs, inverse=False):
+        inputs_transformed = []
+        for i, layer in enumerate(self.inn):
+            inputs_transformed.append(layer(inputs[i], inverse))
+        inputs_transformed = torch.stack(inputs_transformed, dim=1).permute(0, 2, 1).contiguous()
+        return inputs_transformed
+#%%
 def main():
     config = {
         "n": 10,
@@ -151,18 +168,26 @@ def main():
     label = torch.randn(config["n"], config["node"])
     label = label.unsqueeze(dim=2)
     label = label.repeat(1, 1, config["replicate"])
-    label = [x.squeeze(dim=1).contiguous() for x in torch.split(label, 1, 1)]
+    label = [x.squeeze(dim=1).contiguous() for x in torch.split(label, 1, dim=1)]
 
-    inn = [INN(config) for _ in range(config["node"])]
+    # inn = [INN(config) for _ in range(config["node"])]
 
-    label_transformed = []
-    for i, c_layer in enumerate(inn):
-        label_transformed.append(inn[i](label[i], inverse=True))
+    # label_transformed = []
+    # for i, c_layer in enumerate(inn):
+    #     label_transformed.append(inn[i](label[i], inverse=True))
 
-    label_ = []
-    for i, c_layer in enumerate(inn):
-        label_.append(inn[i](label_transformed[i], inverse=False))
-
+    # label_ = []
+    # for i, c_layer in enumerate(inn):
+    #     label_.append(inn[i](label_transformed[i], inverse=False))
+    
+    model = GeneralizedLinearSEM(config)
+    # inverse
+    label_transformed = model(label, inverse=True)
+    label_transformed_ = [x.squeeze(dim=2) for x in torch.split(label_transformed, 1, dim=2)]
+    # forward
+    label_ = model(label_transformed_, inverse=False)
+    label_ = [x.squeeze(dim=2) for x in torch.split(label_, 1, dim=2)]
+    
     """
     Generalized Linear SEM:
     u = g((I - B^T)^-1 * epsilon)
@@ -170,7 +195,6 @@ def main():
     """
     B = torch.randn(config["node"], config["node"]) / 10 + torch.eye(config["node"])
     
-    label_transformed = torch.stack(label_transformed, dim=1).permute(0, 2, 1).contiguous()
     recon = torch.pow(label_transformed - torch.matmul(label_transformed, B), 2).sum()
     
     assert torch.allclose(torch.stack(label), torch.stack(label_))
