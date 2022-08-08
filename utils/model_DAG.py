@@ -84,29 +84,43 @@ class CouplingLayer(nn.Module):
                  input_dim,
                  device='cpu',
                  reverse=False,
-                 hidden_dim=8,
-                 s_act='tanh',
-                 t_act='relu'):
+                 hidden_dim=8,):
+                #  s_act='tanh',
+                #  t_act='relu'):
         super(CouplingLayer, self).__init__()
 
-        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
-        s_act_func = activations[s_act]
-        t_act_func = activations[t_act]
+        # activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
+        # s_act_func = activations[s_act]
+        # t_act_func = activations[t_act]
 
         self.mask = checkerboard_mask(input_dim, reverse=reverse).to(device)
 
         self.scale_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), 
-            s_act_func(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), 
-            s_act_func(),
-            nn.Linear(hidden_dim, input_dim)).to(device)
+            nn.ReLU(),
+            nn.Linear(hidden_dim, input_dim),
+            nn.Tanh()).to(device)
         self.translate_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), 
-            t_act_func(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), 
-            t_act_func(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, input_dim)).to(device)
+        
+        # self.scale_net = nn.Sequential(
+        #     nn.Linear(input_dim, hidden_dim), 
+        #     s_act_func(),
+        #     nn.Linear(hidden_dim, hidden_dim), 
+        #     s_act_func(),
+        #     nn.Linear(hidden_dim, input_dim)).to(device)
+        # self.translate_net = nn.Sequential(
+        #     nn.Linear(input_dim, hidden_dim), 
+        #     t_act_func(),
+        #     nn.Linear(hidden_dim, hidden_dim), 
+        #     t_act_func(),
+        #     nn.Linear(hidden_dim, input_dim)).to(device)
 
     def inverse(self, inputs):
         u = inputs * self.mask
