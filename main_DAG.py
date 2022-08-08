@@ -53,14 +53,14 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--seed', type=int, default=1, 
+    parser.add_argument('--seed', type=int, default=7, 
                         help='seed for repeatable results')
 
     parser.add_argument('--node', default=4, type=int,
                         help='the number of nodes')
     parser.add_argument('--batch_size', default=64, type=int,
                         help='batch size')
-    parser.add_argument("--hidden_dim", default=8, type=int,
+    parser.add_argument("--hidden_dim", default=4, type=int,
                         help="hidden dimensions for MLP")
     parser.add_argument("--replicate", default=2, type=int,
                         help="")
@@ -80,7 +80,7 @@ def get_args(debug):
                         help='maximum iteration')
     parser.add_argument('--h_tol', default=1e-8, type=float,
                         help='h value tolerance')
-    parser.add_argument('--w_threshold', default=0.3, type=float,
+    parser.add_argument('--w_threshold', default=0.5, type=float,
                         help='weight adjacency matrix threshold')
     parser.add_argument('--lambda', default=0.1, type=float,
                         help='weight of LASSO regularization')
@@ -88,7 +88,7 @@ def get_args(debug):
                         help='progress rate')
     parser.add_argument('--rho_max', default=1e+16, type=float,
                         help='rho max')
-    parser.add_argument('--rho_rate', default=5, type=float,
+    parser.add_argument('--rho_rate', default=10, type=float,
                         help='rho rate')
 
     if debug:
