@@ -150,7 +150,7 @@ def train(dataloader, model, B_est, mask, rho, alpha, config, optimizer):
     return logs, B_masked
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -164,6 +164,7 @@ def main():
     label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
     label = label - label.mean(axis=0).round(2) 
     # print(label.mean(axis=0).round(2))
+    # print(label.std(axis=0).round(2))
     # label = label / label.std(axis=0)
 
     label = torch.Tensor(label) 
