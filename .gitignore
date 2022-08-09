@@ -7,3 +7,4 @@ artifacts
 *.pth
 tmp_image_*
 etc
+*.sh
