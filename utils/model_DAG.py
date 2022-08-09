@@ -9,6 +9,7 @@ from torch import nn
 #This program is distributed in the hope that it will be useful,
 #but WITHOUT ANY WARRANTY; without even the implied warranty of
 #MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the MIT License for more details.
+
 class MaskLayer(nn.Module):
     def __init__(self, concept=4):
         super().__init__()
@@ -143,16 +144,40 @@ class INN(nn.Module):
             CouplingLayer(config["replicate"], device, reverse=True, hidden_dim=config["hidden_dim"]).to(device),
             CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device)
         ]
+        
+        self.coupling_module = nn.Sequential(*self.coupling_layer)
 
-    def forward(self, inputs, inverse=False):
+    def inverse(self, inputs):
         h = inputs
-        if inverse:
-            for i, c_layer in enumerate(reversed(self.coupling_layer)):
+        for c_layer in reversed(self.coupling_layer):
                 h = c_layer.inverse(h)
-        else:
-            for i, c_layer in enumerate(self.coupling_layer):
-                h = c_layer(h)
         return h
+        
+    def forward(self, inputs):
+        h = self.coupling_module(inputs)
+        return h
+    
+# class INN(nn.Module):
+#     def __init__(self,
+#                  config,
+#                  device='cpu'):
+#         super(INN, self).__init__()
+
+#         self.coupling_layer = [
+#             CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device),
+#             CouplingLayer(config["replicate"], device, reverse=True, hidden_dim=config["hidden_dim"]).to(device),
+#             CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device)
+#         ]
+
+#     def forward(self, inputs, inverse=False):
+#         h = inputs
+#         if inverse:
+#             for i, c_layer in enumerate(reversed(self.coupling_layer)):
+#                 h = c_layer.inverse(h)
+#         else:
+#             for i, c_layer in enumerate(self.coupling_layer):
+#                 h = c_layer(h)
+#         return h
 #%%
 class GeneralizedLinearSEM(nn.Module):
     def __init__(self,
@@ -163,13 +188,31 @@ class GeneralizedLinearSEM(nn.Module):
         self.config = config
 
         self.inn = [INN(config, device) for _ in range(config["node"])]
-        
+    
     def forward(self, inputs, inverse=False):
-        inputs_transformed = []
-        for i, layer in enumerate(self.inn):
-            inputs_transformed.append(layer(inputs[i], inverse))
+        if inverse:
+            inputs_transformed = list(map(lambda x, layer: layer.inverse(x), inputs, self.inn))
+        else:
+            inputs_transformed = list(map(lambda x, layer: layer(x), inputs, self.inn))
         inputs_transformed = torch.stack(inputs_transformed, dim=1).permute(0, 2, 1).contiguous()
         return inputs_transformed
+
+# class GeneralizedLinearSEM(nn.Module):
+#     def __init__(self,
+#                  config,
+#                  device='cpu'):
+#         super(GeneralizedLinearSEM, self).__init__()
+
+#         self.config = config
+
+#         self.inn = [INN(config, device) for _ in range(config["node"])]
+        
+#     def forward(self, inputs, inverse=False):
+#         inputs_transformed = []
+#         for i, layer in enumerate(self.inn):
+#             inputs_transformed.append(layer(inputs[i], inverse))
+#         inputs_transformed = torch.stack(inputs_transformed, dim=1).permute(0, 2, 1).contiguous()
+#         return inputs_transformed
 #%%
 def main():
     config = {
@@ -195,11 +238,11 @@ def main():
     #     label_.append(inn[i](label_transformed[i], inverse=False))
     
     model = GeneralizedLinearSEM(config)
-    # inverse
-    label_transformed = model(label, inverse=True)
-    label_transformed_ = [x.squeeze(dim=2) for x in torch.split(label_transformed, 1, dim=2)]
     # forward
-    label_ = model(label_transformed_, inverse=False)
+    label_transformed = model(label, inverse=False)
+    label_transformed_ = [x.squeeze(dim=2) for x in torch.split(label_transformed, 1, dim=2)]
+    # inverse
+    label_ = model(label_transformed_, inverse=True)
     label_ = [x.squeeze(dim=2) for x in torch.split(label_, 1, dim=2)]
     
     """

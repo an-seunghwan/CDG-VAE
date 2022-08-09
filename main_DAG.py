@@ -59,7 +59,7 @@ def get_args(debug):
 
     parser.add_argument('--node', default=4, type=int,
                         help='the number of nodes')
-    parser.add_argument('--batch_size', default=64, type=int,
+    parser.add_argument('--batch_size', default=256, type=int,
                         help='batch size')
     parser.add_argument("--hidden_dim", default=4, type=int,
                         help="hidden dimensions for MLP")
@@ -117,21 +117,23 @@ def train(dataloader, model, B_est, mask, rho, alpha, config, optimizer):
         if config["cuda"]:
             batch = batch.cuda()
         
-        batch = batch.unsqueeze(dim=2)
-        batch = batch.repeat(1, 1, config["replicate"])
+        batch = batch.unsqueeze(dim=2).repeat(1, 1, config["replicate"])
         batch = [x.squeeze(dim=1).contiguous() for x in torch.split(batch, 1, dim=1)]
         
         loss_ = []
         
         B_masked = B_est * mask
         
-        batch_transformed = model(batch, inverse=True)
+        """DAG reconstruction"""
+        batch_transformed = model(batch)
         recon = 0.5 * torch.pow(batch_transformed - torch.matmul(batch_transformed, B_masked), 2).sum() / batch[0].size(0)
         loss_.append(('recon', recon))
         
+        """Sparsity"""
         L1 = config["lambda"] * torch.norm(B_masked, p=1)
         loss_.append(('L1', L1))
         
+        """DAGness and augmented Lagrangian"""
         h = h_fun(B_masked.cpu())
         aug = alpha * h
         aug += 0.5 * rho * (h ** 2)
@@ -163,8 +165,8 @@ def main():
     train_imgs = os.listdir('./utils/causal_data/pendulum/train')
     label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
     label = label - label.mean(axis=0).round(2) 
-    # print(label.mean(axis=0).round(2))
-    # print(label.std(axis=0).round(2))
+    print("Label Dataset Mean:", label.mean(axis=0).round(2))
+    print("Label Dataset Std:", label.std(axis=0).round(2))
     # label = label / label.std(axis=0)
 
     label = torch.Tensor(label) 
