@@ -68,6 +68,7 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["embedding_dim"]),
+            nn.BatchNorm1d(config["node"] * config["embedding_dim"]),
         ).to(device)
         
         """Build Vector Quantizer"""
@@ -75,8 +76,6 @@ class VAE(nn.Module):
         
         self.B = B # weighted adjacency matrix
         # self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
-        # self.weight = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
-        # self.bias = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
         
         """decoder"""
         self.decoder = nn.Sequential(

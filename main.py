@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 
 import torch
+from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from utils.simulation import (
@@ -41,7 +43,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "LGP"], # AddictiveNoiseModel, nonlinear(tanh)
 )
 #%%
 import argparse
@@ -51,30 +53,24 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    # parser.add_argument("--hidden_dim", default=4, type=int,
-    #                     help="hidden dimensions for MLP")
-    # parser.add_argument("--num_layer", default=5, type=int,
-    #                     help="hidden dimensions for MLP")
-    parser.add_argument("--latent_dim", default=5, type=int,
-                        help="dimension of each latent node")
+    parser.add_argument("--node", default=4, type=int,
+                        help="the number of nodes")
+    parser.add_argument("--num_embeddings", default=100, type=int,
+                        help="the number of embedding vectors")
+    parser.add_argument("--embedding_dim", default=1, type=int,
+                        help="dimension of embedding vector")
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=32, type=int,
+    parser.add_argument('--batch_size', default=64, type=int,
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--penalty', default='lasso', type=str,
-                        help='penalty type for sparity: lasso, MCP')
+    parser.add_argument('--beta', default=0.25, type=float,
+                        help='weight of commitment loss')
     parser.add_argument('--lambda', default=0.1, type=float,
-                        help='coefficient of sparsity penalty')
-    parser.add_argument('--gamma', default=2, type=float,
-                        help='coefficient of MCP penalty')
-    parser.add_argument('--beta', default=0.1, type=float,
-                        help='coefficient of KL-divergence')
-    parser.add_argument('--w_threshold', default=0.1, type=float,
-                        help='threshold for weighted adjacency matrix')
+                        help='weight of DAG reconstruction loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
@@ -83,71 +79,45 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def train(dataloader, model, config, optimizer, device):
+def train(dataloader, model, B, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
-        'Sparsity': [],
-        'KL': [],
+        'VQ': [],
+        # 'DAGRecon': [],
     }
     
-    # for i in tqdm.tqdm(range(len(train_x) // config["batch_size"]), desc="inner loop"):
     for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
-        # idx = np.random.choice(range(len(train_x)), config["batch_size"])
-        # batch = torch.FloatTensor(train_x[idx])
-        # batch = batch.permute((0, 3, 1, 2))
         
         batch = batch[0]
-        # batch.to(device)
         if config["cuda"]:
             batch = batch.cuda()
         
-        # with torch.autograd.set_detect_anomaly(True):    
-        optimizer.zero_grad()
-        
-        latent, zB, B, xhat = model(batch)
-        
-        loss_ = []
-        
-        """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() # Gaussian
-        # recon = -((batch * torch.log(xhat) + (1. - batch) * torch.log(1. - xhat)).sum(axis=[1, 2, 3]).mean())
-        loss_.append(('recon', recon))
+        with torch.autograd.set_detect_anomaly(True):    
+            optimizer.zero_grad()
+            
+            causal_latent_orig, causal_latent, xhat, vq_loss = model(batch)
+            
+            loss_ = []
+            
+            """reconstruction"""
+            recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() 
+            # recon = F.mse_loss(xhat, batch)
+            loss_.append(('recon', recon))
 
-        """KL-divergence"""
-        # logvar = logvar.squeeze(dim=1)
-        KL = torch.pow(latent - zB, 2).sum(axis=1)
-        # KL -= logvar * config["latent_dim"]
-        # KL += torch.exp(logvar) * config["latent_dim"]
-        # KL -= config["latent_dim"]
-        KL *= 0.5
-        KL = KL.mean()
-        loss_.append(('KL', KL))
-        
-        """Sparsity"""
-        if config["penalty"] == "lasso":
-            sparsity = torch.linalg.norm(B, ord=1)
-            loss_.append(('Sparsity', sparsity))
-            loss = recon + config["beta"] * KL + config["lambda"] * sparsity
+            """VQ loss"""
+            loss_.append(('VQ', vq_loss))
             
-        elif config["penalty"] == "MCP":
-            p1 = config["lambda"] * torch.abs(B)
-            p1 -= torch.pow(B, 2) / (2. * config["gamma"])
-            p1 = p1[torch.abs(B) <= config["gamma"] * config["lambda"]].sum()
+            # """DAG reconstruction"""
+            # dag_recon = 0.5 * torch.pow(causal_latent_orig - torch.matmul(causal_latent_orig, B), 2).sum(axis=[1, 2]).mean()
+            # loss_.append(('DAGRecon', dag_recon))
             
-            p2 = (torch.abs(B) > config["gamma"] * config["lambda"]).sum().float()
-            p2 *= torch.tensor(0.5 * config["gamma"] * (config["lambda"] ** 2))
+            loss = recon + vq_loss
+            # loss = recon + vq_loss + config["lambda"] * dag_recon
+            loss_.append(('loss', loss))
             
-            sparsity = p1 + p2
-            loss_.append(('Sparsity', sparsity))
-            loss = recon + config["beta"] * KL + sparsity
-            
-        else:
-            raise ValueError("Unknown penalty type.")
-        loss_.append(('loss', loss))
-        
-        loss.backward()
-        optimizer.step()
+            loss.backward()
+            optimizer.step()
         
         """accumulate losses"""
         for x, y in loss_:
@@ -156,7 +126,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -187,54 +157,40 @@ def main():
     del train_x
     del dataset
     
-    # plt.imshow(train_x[0])
-    # plt.show()
-
-    # wandb.run.summary['W_true'] = wandb.Table(data=pd.DataFrame(W_true))
-    # fig = viz_graph(W_true, size=(7, 7), show=config["fig_show"])
-    # wandb.log({'Graph': wandb.Image(fig)})
-    # fig = viz_heatmap(W_true, size=(5, 4), show=config["fig_show"])
-    # wandb.log({'heatmap': wandb.Image(fig)})
+    """Estimated Causal Adjacency Matrix"""
+    B = torch.zeros(config["node"], config["node"])
+    B[:2, 2:] = torch.tensor(np.array([[-0.7, 1], [0.8, -0.85]])) # example
     
-    model = VAE(config, device)
-    
+    model = VAE(B, config, device)
     model.to(device)
-    # if config["cuda"]:
-    #     model.cuda()
-
+    
     optimizer = torch.optim.Adam(
         model.parameters(), 
         lr=config["lr"]
     )
     
-    wandb.watch(model, log_freq=50) # tracking gradients
+    wandb.watch(model, log_freq=100) # tracking gradients
     model.train()
+    
+    # model.vq_layer.embedding.weight
+    # latent = model.encoder(nn.Flatten()(batch))
+    # model.vq_layer(latent)
     
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
-        logs, B, xhat = train(dataloader, model, config, optimizer, device)
-        
-        with torch.no_grad():
-            """update mask"""
-            if epoch > config["epochs"] // 3:
-                B_ = (model.W * model.ReLU_Y).detach().clone()
-                model.mask[torch.abs(B_) < config["w_threshold"]] = 0. 
-            nonzero_ratio = (B != 0).sum().item() / (config["latent_dim"] * (config["latent_dim"] - 1) / 2)
-            
-        print_input = "[epoch {:03d}]".format(epoch + 1)
-        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
-        print_input += ', NonZero: {:.2f}'.format(nonzero_ratio)
-        print(print_input)
-        
-        """update log"""
-        wandb.log({x : np.mean(y) for x, y in logs.items()})
-        wandb.log({'NonZero' : nonzero_ratio})
+        logs, B, xhat = train(dataloader, model, B, config, optimizer, device)
         
         if epoch % 10 == 0:
+            print_input = "[epoch {:03d}]".format(epoch + 1)
+            print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
+            print(print_input)
+            
+            """update log"""
+            wandb.log({x : np.mean(y) for x, y in logs.items()})
+            
             plt.figure(figsize=(4, 4))
             for i in range(9):
                 plt.subplot(3, 3, i+1)
-                # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
                 plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
                 plt.axis('off')
             plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
@@ -244,30 +200,19 @@ def main():
     fig = plt.figure(figsize=(4, 4))
     for i in range(9):
         plt.subplot(3, 3, i+1)
-        # plt.imshow(xhat[i].permute((1, 2, 0)).detach().numpy())
         plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
         plt.axis('off')
     plt.savefig('./assets/image.png')
     plt.close()
     wandb.log({'reconstruction': wandb.Image(fig)})
-    
-    """post-process"""
-    B_est = (model.W * model.ReLU_Y).cpu().detach().numpy()
-    # B_est[np.abs(B_est) < config["w_threshold"]] = 0.
-    B_est = B_est.astype(float).round(2)
 
-    fig = viz_graph(B_est, size=(7, 7), show=config["fig_show"])
-    wandb.log({'Graph_est': wandb.Image(fig)})
-    fig = viz_heatmap(np.flipud(B_est), size=(5, 4), show=config["fig_show"])
-    wandb.log({'heatmap_est': wandb.Image(fig)})
-
-    """model save"""
-    torch.save(model.state_dict(), './assets/model.pth')
-    artifact = wandb.Artifact('model', type='model') # description=""
-    artifact.add_file('./assets/model.pth')
-    wandb.log_artifact(artifact)
+    # """model save"""
+    # torch.save(model.state_dict(), './assets/model.pth')
+    # artifact = wandb.Artifact('model', type='model') # description=""
+    # artifact.add_file('./assets/model.pth')
+    # wandb.log_artifact(artifact)
     
-    """model load"""
+    # """model load"""
     # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v1', type='model')
     # model_dir = artifact.download()
     # model = VAE(config)
