@@ -1,6 +1,6 @@
 #%%
 import torch
-from torch import inverse, nn
+from torch import nn
 #%% 
 #Copyright (C) 2021. Huawei Technologies Co., Ltd. All rights reserved.
 #This program is free software; 

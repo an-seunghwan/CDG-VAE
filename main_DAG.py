@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 
 import torch
+from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -131,7 +132,7 @@ def train(dataloader, model, B_est, mask, rho, alpha, config, optimizer):
         L1 = config["lambda"] * torch.norm(B_masked, p=1)
         loss_.append(('L1', L1))
         
-        h = h_fun(B_masked)
+        h = h_fun(B_masked.cpu())
         aug = alpha * h
         aug += 0.5 * rho * (h ** 2)
         loss_.append(('aug', aug))
@@ -171,10 +172,11 @@ def main():
                             batch_size=config["batch_size"],
                             shuffle=True)
 
-    model = GeneralizedLinearSEM(config)
-    B_est = torch.zeros((config["node"], config["node"]), 
-                        requires_grad=True)
+    model = GeneralizedLinearSEM(config, device)
+    B_est = nn.Parameter(torch.zeros((config["node"], config["node"]), 
+                        requires_grad=True).to(device))
     mask = torch.ones(config["node"], config["node"]) - torch.eye(config["node"])
+    mask = mask.to(device)
 
     optimizer = torch.optim.Adam(list(model.parameters()) + [B_est], lr=config["lr"])
     model.train()
@@ -190,7 +192,7 @@ def main():
                 logs, B_masked = train(dataloader, model, B_est, mask, rho, alpha, config, optimizer)
 
             with torch.no_grad():
-                h_current = h_fun(B_masked)
+                h_current = h_fun(B_masked.cpu())
                 if h_current.item() > config["progress_rate"] * h:
                     rho *= config["rho_rate"]
                 else:
