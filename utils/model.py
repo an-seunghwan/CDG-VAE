@@ -54,71 +54,6 @@ class VectorQuantizer(nn.Module):
         
         return quantized_latent, vq_loss 
 #%%
-def checkerboard_mask(width, reverse=False, device='cpu'):
-    """
-    Reference:
-    [1]: https://github.com/chrischute/real-nvp/blob/df51ad570baf681e77df4d2265c0f1eb1b5b646c/util/array_util.py#L78
-    
-    Get a checkerboard mask, such that no two entries adjacent entries
-    have the same value. In non-reversed mask, top-left entry is 0.
-    Args:
-        width (int): Number of columns in the mask.
-        requires_grad (bool): Whether the tensor requires gradient. (default: False)
-    Returns:
-        mask (torch.tensor): Checkerboard mask of shape (1, width).
-    """
-    checkerboard = [j % 2 for j in range(width)]
-    mask = torch.tensor(checkerboard, requires_grad=False).to(device)
-    if reverse:
-        mask = 1 - mask
-    # Reshape to (1, width) for broadcasting with tensors of shape (B, W)
-    mask = mask.view(1, width)
-    return mask
-#%%
-class CouplingLayer(nn.Module):
-    """
-    An implementation of a coupling layer from RealNVP (https://arxiv.org/abs/1605.08803).
-    Reference:
-    [1]: https://github.com/ikostrikov/pytorch-flows/blob/master/flows.py
-    """
-    def __init__(self,
-                 input_dim,
-                 device='cpu',
-                 reverse=False,
-                 hidden_dim=64,
-                 s_act='tanh',
-                 t_act='relu'):
-        super(CouplingLayer, self).__init__()
-
-        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
-        s_act_func = activations[s_act]
-        t_act_func = activations[t_act]
-
-        self.mask = checkerboard_mask(input_dim, reverse=reverse).to(device)
-
-        self.scale_net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim), 
-            s_act_func(),
-            nn.Linear(hidden_dim, hidden_dim), 
-            s_act_func(),
-            nn.Linear(hidden_dim, input_dim)).to(device)
-        self.translate_net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim), 
-            t_act_func(),
-            nn.Linear(hidden_dim, hidden_dim), 
-            t_act_func(),
-            nn.Linear(hidden_dim, input_dim)).to(device)
-
-    def inverse(self, inputs):
-        u = inputs * self.mask
-        u += (1 - self.mask) * (inputs - self.translate_net(self.mask * inputs)) * torch.exp(-self.scale_net(self.mask * inputs))
-        return u
-        
-    def forward(self, inputs):
-        z = self.mask * inputs
-        z += (1 - self.mask) * (inputs * torch.exp(self.scale_net(self.mask * inputs)) + self.translate_net(self.mask * inputs))
-        return z
-#%%
 class VAE(nn.Module):
     def __init__(self, B, config, device):
         super(VAE, self).__init__()
@@ -139,13 +74,9 @@ class VAE(nn.Module):
         self.vq_layer = VectorQuantizer(self.config, device).to(device)
         
         self.B = B # weighted adjacency matrix
-        self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
+        # self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
         # self.weight = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
         # self.bias = nn.Parameter(torch.zeros(config["node"], config["embedding_dim"]))
-        
-        self.coupling_layer = [CouplingLayer(config["embedding_dim"], device, reverse=False).to(device),
-                            CouplingLayer(config["embedding_dim"], device, reverse=True).to(device),
-                            CouplingLayer(config["embedding_dim"], device, reverse=False).to(device)]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -159,13 +90,8 @@ class VAE(nn.Module):
 
         self.I = torch.eye(config["node"]).to(device)
         
-    def inverse(self, input):
-        u = input
-        u = 0.5 * torch.log((1. + u) / (1. - u) + 1e-8) # tanh inverse function
-        for c_layer in reversed(self.coupling_layer):
-            u = c_layer.inverse(u)
-        return u
-    
+        # u = 0.5 * torch.log((1. + u) / (1. - u) + 1e-8) # tanh inverse function
+        
     def forward(self, input):
         latent = self.encoder(nn.Flatten()(input)) # [batch, node*embedding_dim]
         
@@ -175,16 +101,11 @@ class VAE(nn.Module):
 
         """Latent Generating Process"""
         causal_latent = torch.matmul(quantized_latent, torch.inverse(self.I - self.B))
-        causal_latent = causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous()
-        causal_latent = self.batchnorm(causal_latent)
-        causal_latent = causal_latent.view(-1, self.config["embedding_dim"], self.config["node"]).contiguous()
+        # causal_latent = self.batchnorm(causal_latent)
+        causal_latent_orig = causal_latent.clone() # save for DAG reconstruction loss
+        causal_latent = torch.tanh(causal_latent) # intervention range (-1, 1)
         causal_latent = causal_latent.permute(0, 2, 1).contiguous() # [batch, node, embedding_dim]
-        causal_latent_orig = causal_latent.clone()
-        # invertible NN: generalized SEM
-        for c_layer in self.coupling_layer:
-            causal_latent = c_layer(causal_latent)
-        causal_latent = torch.tanh(causal_latent)
-        causal_latent = causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"])
+        causal_latent = causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous()
 
         xhat = self.decoder(causal_latent).view(-1, 96, 96, 3)
         return causal_latent_orig, causal_latent, xhat, vq_loss
@@ -194,7 +115,8 @@ def main():
         "n": 10,
         "num_embeddings": 10,
         "node": 4,
-        "embedding_dim": 6,
+        "embedding_dim": 1,
+        "beta": 0.25,
     }
     
     B = torch.randn(config["node"], config["node"]) / 10 + torch.eye(config["node"])
@@ -205,20 +127,45 @@ def main():
     batch = torch.rand(config["n"], 96, 96, 3)
     causal_latent_orig, causal_latent, xhat, vq_loss = model(batch)
     
-    assert causal_latent_orig.shape == (config["n"], config["node"], config["embedding_dim"])
+    assert causal_latent_orig.shape == (config["n"], config["embedding_dim"], config["node"])
     assert causal_latent.shape == (config["n"], config["node"] * config["embedding_dim"])
     assert xhat.shape == (config["n"], 96, 96, 3)
     
-    inversed_latent = model.inverse(causal_latent.view(-1, config["node"], config["embedding_dim"]))
+    inversed_latent = 0.5 * torch.log((1. + causal_latent) / (1. - causal_latent) + 1e-8) # tanh inverse function
     
-    # assert torch.isclose(causal_latent_orig, inversed_latent).sum()
-    assert torch.abs(causal_latent_orig - inversed_latent).sum() < 1e-4
+    assert torch.isclose(causal_latent_orig.squeeze(dim=1), inversed_latent).sum()
+    # assert torch.abs(causal_latent_orig.squeeze(dim=1) - inversed_latent).sum() < 1e-4
     
     print("Model test pass!")
 #%%
 if __name__ == '__main__':
     main()
 #%%
+# config = {
+#     "n": 10,
+#     "num_embeddings": 10,
+#     "node": 4,
+#     "embedding_dim": 1,
+#     "beta": 0.25,
+# }
+
+# B = torch.zeros(config["node"], config["node"])
+# B[:2, 2:] = 1
+
+# x = torch.randn(config["n"], 96, 96, 3)
+
+# """encoder"""
+# encoder = nn.Sequential(
+#     nn.Linear(3*96*96, 300),
+#     nn.ELU(),
+#     nn.Linear(300, 300),
+#     nn.ELU(),
+#     nn.Linear(300, config["node"] * config["embedding_dim"]),
+# )
+
+# latents = encoder(nn.Flatten()(x))
+# #%%
+# ##### VQ
 # latents = latents.view(-1, config["node"], config["embedding_dim"]).contiguous()
 
 # embedding = nn.Embedding(config["num_embeddings"], config["embedding_dim"])
@@ -252,38 +199,13 @@ if __name__ == '__main__':
 
 # # Add the residue back to the latents (straight-through gradient estimation)
 # quantized_latent = latents + (quantized_latent - latents).detach()
+# #%%
 # quantized_latent = quantized_latent.permute(0, 2, 1).contiguous()
-#%%
-# """encoder"""
-# encoder = nn.Sequential(
-#     nn.Linear(3*96*96, 300),
-#     nn.ELU(),
-#     nn.Linear(300, 300),
-#     nn.ELU(),
-#     nn.Linear(300, config["node"] * config["embedding_dim"]),
-# )
 
-# B = torch.randn(config["node"], config["node"]) / 10 + torch.eye(config["node"])
-
-# x = torch.randn(10, 96, 96, 3)
-# latents = encoder(nn.Flatten()(x))
-#%%
 # """Latent Generating Process"""
 # I = torch.eye(config["node"])
 # causal_latent = torch.matmul(quantized_latent, torch.inverse(I - B))
 # causal_latent = causal_latent.permute(0, 2, 1).contiguous()
-
-# coupling_layer = [CouplingLayer(config["embedding_dim"], reverse=False),
-#                   CouplingLayer(config["embedding_dim"], reverse=True),
-#                   CouplingLayer(config["embedding_dim"], reverse=False)]
-
-# h1 = causal_latent
-# for c_layer in coupling_layer:
-#     h1 = c_layer(h1)
-
-# h2 = h1
-# for c_layer in reversed(coupling_layer):
-#     h2 = c_layer.inverse(h2)
 
 # causal_latent = causal_latent.view(-1, config["node"] * config["embedding_dim"])
 #%%

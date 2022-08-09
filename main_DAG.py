@@ -162,7 +162,7 @@ def main():
 
     train_imgs = os.listdir('./utils/causal_data/pendulum/train')
     label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-    label = label - label.mean(axis=0) 
+    label = label - label.mean(axis=0).round(2) 
     # print(label.mean(axis=0).round(2))
     # label = label / label.std(axis=0)
 
@@ -229,8 +229,8 @@ def main():
     fig = viz_heatmap(np.flipud(B_), size=(5, 4))
     wandb.log({'heatmap_est': wandb.Image(fig)})
     
-    B_bin = (B_ != 0).astype(float)
     """accuracy"""
+    B_bin = (B_ != 0).astype(float)
     acc = count_accuracy(B_true, B_bin)
     wandb.log(acc)
 
