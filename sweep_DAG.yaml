@@ -11,16 +11,16 @@ parameters:
   hidden_dim:
     values: [4, 8, 16]
   replicate:
-    values: [2, 4]
+    values: [2, 4, 6, 8]
   lambda:
-    values: [0.1, 0.2, 0.3, 0.4, 0.5]
+    values: [0.1, 1, 2, 5, 10]
   rho_rate:
     values: [2, 5, 10]
   w_threshold:
-    values: [0.1, 0.2, 0.3, 0.4, 0.5]
-  batch_size:
-    values: [32, 64, 128]
-  lr:
-    values: [0.0001, 0.0005, 0.001]
+    values: [0.5, 0.7]
   progress_rate:
-    values: [0.1, 0.3, 0.5]
+    values: [0.1, 0.25, 0.5]
+  # batch_size:
+  #   values: [32, 64, 128]
+  # lr:
+  #   values: [0.0001, 0.0005, 0.001]
