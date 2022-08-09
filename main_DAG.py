@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--seed', type=int, default=7, 
+    parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
 
     parser.add_argument('--node', default=4, type=int,
@@ -149,7 +149,7 @@ def train(dataloader, model, B_est, mask, rho, alpha, config, optimizer):
     return logs, B_masked
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -162,6 +162,7 @@ def main():
     train_imgs = os.listdir('./utils/causal_data/pendulum/train')
     label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
     label = label - label.mean(axis=0) 
+    # print(label.mean(axis=0).round(2))
     # label = label / label.std(axis=0)
 
     label = torch.Tensor(label) 
