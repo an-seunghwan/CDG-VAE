@@ -195,11 +195,11 @@ def main():
     for epoch in range(config["epochs"]):
         logs, B, xhat = train(dataloader, model, alignnet, B, config, optimizer, device)
         
+        print_input = "[epoch {:03d}]".format(epoch + 1)
+        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
+        print(print_input)
+        
         if epoch % 10 == 0:
-            print_input = "[epoch {:03d}]".format(epoch + 1)
-            print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
-            print(print_input)
-            
             """update log"""
             wandb.log({x : np.mean(y) for x, y in logs.items()})
             
