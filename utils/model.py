@@ -90,7 +90,7 @@ class VAE(nn.Module):
         """Build Vector Quantizer"""
         self.vq_layer = VectorQuantizer(self.config, device).to(device)
         
-        self.B = B # weighted adjacency matrix
+        self.B = B.to(device) # weighted adjacency matrix
         # self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
         
         """decoder"""
