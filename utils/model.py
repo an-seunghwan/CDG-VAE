@@ -54,6 +54,22 @@ class VectorQuantizer(nn.Module):
         
         return quantized_latent, vq_loss 
 #%%
+class AlignNet(nn.Module):
+    def __init__(self, config, device, output_dim=1):
+        super(AlignNet, self).__init__()
+        
+        self.config = config
+        self.device = device
+        
+        self.net = [nn.Sequential(nn.Linear(config["embedding_dim"], output_dim)).to(device) 
+                    for _ in range(config["node"])]
+        
+    def forward(self, input):
+        split_latent = list(map(lambda x: x.squeeze(dim=2), torch.split(input, 1, dim=2)))
+        h = list(map(lambda x, layer: layer(x), split_latent, self.net))
+        h = torch.cat(h, dim=1)
+        return h
+#%%
 class VAE(nn.Module):
     def __init__(self, B, config, device):
         super(VAE, self).__init__()
@@ -99,14 +115,13 @@ class VAE(nn.Module):
         quantized_latent = quantized_latent.permute(0, 2, 1).contiguous() # [batch, embedding_dim, node]
 
         """Latent Generating Process"""
-        causal_latent = torch.matmul(quantized_latent, torch.inverse(self.I - self.B))
+        causal_latent = torch.matmul(quantized_latent, torch.inverse(self.I - self.B)) # [batch, embedding_dim, node]
         # causal_latent = self.batchnorm(causal_latent)
         causal_latent_orig = causal_latent.clone() # save for DAG reconstruction loss
         causal_latent = torch.tanh(causal_latent) # intervention range (-1, 1)
-        causal_latent = causal_latent.permute(0, 2, 1).contiguous() # [batch, node, embedding_dim]
-        causal_latent = causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous()
 
-        xhat = self.decoder(causal_latent).view(-1, 96, 96, 3)
+        xhat = self.decoder(causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous())
+        xhat = xhat.view(-1, 96, 96, 3)
         return causal_latent_orig, causal_latent, xhat, vq_loss
 #%%
 def main():
@@ -122,13 +137,16 @@ def main():
     model = VAE(B, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
+    alignnet = AlignNet(config, 'cpu')
         
     batch = torch.rand(config["n"], 96, 96, 3)
     causal_latent_orig, causal_latent, xhat, vq_loss = model(batch)
+    label_hat = alignnet(causal_latent)
     
     assert causal_latent_orig.shape == (config["n"], config["embedding_dim"], config["node"])
-    assert causal_latent.shape == (config["n"], config["node"] * config["embedding_dim"])
+    assert causal_latent.shape == (config["n"], config["embedding_dim"], config["node"])
     assert xhat.shape == (config["n"], 96, 96, 3)
+    assert label_hat.shape == (config["n"], config["node"])
     
     inversed_latent = 0.5 * torch.log((1. + causal_latent) / (1. - causal_latent) + 1e-8) # tanh inverse function
     
@@ -207,4 +225,11 @@ if __name__ == '__main__':
 # causal_latent = causal_latent.permute(0, 2, 1).contiguous()
 
 # causal_latent = causal_latent.view(-1, config["node"] * config["embedding_dim"])
+#%%
+# causal_latent = causal_latent.permute(0, 2, 1).contiguous() # [batch, node, embedding_dim]
+# split_latent = list(map(lambda x: x.squeeze(dim=2), torch.split(causal_latent, 1, dim=1)))
+
+# output_dim = 1
+# net = [nn.Sequential(nn.Linear(config["embedding_dim"], output_dim)).to(device) for _ in range(config["node"])]
+# list(map(lambda x, layer: layer(x), split_latent, net))
 #%%

@@ -14,6 +14,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import Dataset
 
 from utils.simulation import (
     set_random_seed,
@@ -26,7 +27,8 @@ from utils.viz import (
 )
 
 from utils.model import (
-    VAE
+    VAE,
+    AlignNet,
 )
 #%%
 import sys
@@ -43,7 +45,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "LGP"], # AddictiveNoiseModel, nonlinear(tanh)
+    tags=["linear", "LGP", "nonlinear(tanh)"], # AddictiveNoiseModel
 )
 #%%
 import argparse
@@ -57,7 +59,7 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--num_embeddings", default=100, type=int,
                         help="the number of embedding vectors")
-    parser.add_argument("--embedding_dim", default=1, type=int,
+    parser.add_argument("--embedding_dim", default=2, type=int,
                         help="dimension of embedding vector")
     
     parser.add_argument('--epochs', default=100, type=int,
@@ -71,6 +73,8 @@ def get_args(debug):
                         help='weight of commitment loss')
     parser.add_argument('--lambda', default=0.1, type=float,
                         help='weight of DAG reconstruction loss')
+    parser.add_argument('--gamma', default=0.1, type=float,
+                        help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
 
@@ -79,29 +83,31 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def train(dataloader, model, B, config, optimizer, device):
+def train(dataloader, model, alignnet, B, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
         'VQ': [],
         # 'DAGRecon': [],
+        'Align': [],
     }
     
-    for batch in tqdm.tqdm(iter(dataloader), desc="inner loop"):
+    for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
         
-        batch = batch[0]
         if config["cuda"]:
-            batch = batch.cuda()
+            x_batch = x_batch.cuda()
+            y_batch = y_batch.cuda()
         
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            causal_latent_orig, causal_latent, xhat, vq_loss = model(batch)
+            causal_latent_orig, causal_latent, xhat, vq_loss = model(x_batch)
+            label_hat = alignnet(causal_latent)
             
             loss_ = []
             
             """reconstruction"""
-            recon = 0.5 * torch.pow(xhat - batch, 2).sum(axis=[1, 2, 3]).mean() 
+            recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
             # recon = F.mse_loss(xhat, batch)
             loss_.append(('recon', recon))
 
@@ -112,8 +118,11 @@ def train(dataloader, model, B, config, optimizer, device):
             # dag_recon = 0.5 * torch.pow(causal_latent_orig - torch.matmul(causal_latent_orig, B), 2).sum(axis=[1, 2]).mean()
             # loss_.append(('DAGRecon', dag_recon))
             
-            loss = recon + vq_loss
-            # loss = recon + vq_loss + config["lambda"] * dag_recon
+            """Label Alignment"""
+            align_loss = 0.5 * torch.pow(label_hat - y_batch, 2).sum(axis=1).mean() 
+            loss_.append(('Align', align_loss))
+            
+            loss = recon + vq_loss + config["gamma"] * align_loss # + config["lambda"] * dag_recon
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -136,41 +145,47 @@ def main():
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
 
-    train_imgs = os.listdir('./utils/causal_data/pendulum/train')
-    train_x = []
-    for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-        train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
-    train_x = (np.array(train_x).astype(float) - 127.5) / 127.5
+    """dataset"""
+    class CustomDataset(Dataset): 
+        def __init__(self):
+            train_imgs = os.listdir('./utils/causal_data/pendulum/train')
+            train_x = []
+            for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
+                train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
+            self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
+            
+            label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+            self.y_data = label - label.mean(axis=0).round(2)
+
+        def __len__(self): 
+            return len(self.x_data)
+
+        def __getitem__(self, idx): 
+            x = torch.FloatTensor(self.x_data[idx])
+            y = torch.FloatTensor(self.y_data[idx])
+            return x, y
     
-    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
-    # test_x = []
-    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
-    
-    train_x = torch.Tensor(train_x) 
-    dataset = TensorDataset(train_x) 
-    dataloader = DataLoader(dataset, 
-                            batch_size=config["batch_size"],
-                            shuffle=True)
-    del train_imgs
-    del train_x
-    del dataset
+    dataset = CustomDataset()
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """Estimated Causal Adjacency Matrix"""
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = torch.tensor(np.array([[-0.7, 1], [0.8, -0.85]])) # example
+    B[:2, 2:] = torch.tensor(np.array([[-1, -1], [1, 1]])) # example
     
     model = VAE(B, config, device)
+    alignnet = AlignNet(config, device)
     model.to(device)
+    alignnet.to(device)
     
     optimizer = torch.optim.Adam(
-        model.parameters(), 
+        list(model.parameters()) + list(alignnet.parameters()), 
         lr=config["lr"]
     )
     
     wandb.watch(model, log_freq=100) # tracking gradients
+    wandb.watch(alignnet, log_freq=100) # tracking gradients
     model.train()
+    alignnet.train()
     
     # model.vq_layer.embedding.weight
     # latent = model.encoder(nn.Flatten()(batch))
@@ -178,7 +193,7 @@ def main():
     
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
-        logs, B, xhat = train(dataloader, model, B, config, optimizer, device)
+        logs, B, xhat = train(dataloader, model, alignnet, B, config, optimizer, device)
         
         if epoch % 10 == 0:
             print_input = "[epoch {:03d}]".format(epoch + 1)
