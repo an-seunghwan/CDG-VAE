@@ -72,7 +72,7 @@ def get_args(debug):
                         help='weight of commitment loss')
     parser.add_argument('--lambda', default=0.1, type=float,
                         help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=0.1, type=float,
+    parser.add_argument('--gamma', default=1, type=float,
                         help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -155,7 +155,9 @@ def main():
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            self.y_data = label - label.mean(axis=0).round(2)
+            label = label - label.mean(axis=0)
+            label = label / label.std(axis=0)
+            self.y_data = label.round(2)
 
         def __len__(self): 
             return len(self.x_data)

@@ -55,14 +55,19 @@ class VectorQuantizer(nn.Module):
         return quantized_latent, vq_loss 
 #%%
 class AlignNet(nn.Module):
-    def __init__(self, config, device, output_dim=1):
+    def __init__(self, config, device, output_dim=1, hidden_dim=4):
         super(AlignNet, self).__init__()
         
         self.config = config
         self.device = device
         
-        self.net = [nn.Sequential(nn.Linear(config["embedding_dim"], output_dim)).to(device) 
-                    for _ in range(config["node"])]
+        self.net = [
+            nn.Sequential(
+                nn.Linear(config["embedding_dim"], hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, output_dim)
+                ).to(device) 
+            for _ in range(config["node"])]
         
     def forward(self, input):
         split_latent = list(map(lambda x: x.squeeze(dim=2), torch.split(input, 1, dim=2)))
