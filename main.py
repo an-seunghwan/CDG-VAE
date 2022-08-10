@@ -28,7 +28,6 @@ from utils.viz import (
 
 from utils.model import (
     VAE,
-    AlignNet,
 )
 #%%
 import sys
@@ -59,7 +58,7 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--num_embeddings", default=100, type=int,
                         help="the number of embedding vectors")
-    parser.add_argument("--embedding_dim", default=2, type=int,
+    parser.add_argument("--embedding_dim", default=1, type=int,
                         help="dimension of embedding vector")
     
     parser.add_argument('--epochs', default=100, type=int,
@@ -83,7 +82,7 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def train(dataloader, model, alignnet, B, config, optimizer, device):
+def train(dataloader, model, B, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
@@ -101,8 +100,7 @@ def train(dataloader, model, alignnet, B, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            causal_latent_orig, causal_latent, xhat, vq_loss = model(x_batch)
-            label_hat = alignnet(causal_latent)
+            causal_latent_orig, causal_latent, xhat, vq_loss, label_hat = model(x_batch)
             
             loss_ = []
             
@@ -151,7 +149,9 @@ def main():
             train_imgs = os.listdir('./utils/causal_data/pendulum/train')
             train_x = []
             for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-                train_x.append(np.array(Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])))[:, :, :3])
+                train_x.append(np.array(
+                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((96, 96))
+                    )[:, :, :3])
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
@@ -173,19 +173,15 @@ def main():
     B[:2, 2:] = torch.tensor(np.array([[-1, -1], [1, 1]])) # example
     
     model = VAE(B, config, device)
-    alignnet = AlignNet(config, device)
     model.to(device)
-    alignnet.to(device)
     
     optimizer = torch.optim.Adam(
-        list(model.parameters()) + list(alignnet.parameters()), 
+        model.parameters(), 
         lr=config["lr"]
     )
     
     wandb.watch(model, log_freq=100) # tracking gradients
-    wandb.watch(alignnet, log_freq=100) # tracking gradients
     model.train()
-    alignnet.train()
     
     # model.vq_layer.embedding.weight
     # latent = model.encoder(nn.Flatten()(batch))
@@ -193,7 +189,7 @@ def main():
     
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
-        logs, B, xhat = train(dataloader, model, alignnet, B, config, optimizer, device)
+        logs, B, xhat = train(dataloader, model, B, config, optimizer, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])

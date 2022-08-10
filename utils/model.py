@@ -105,6 +105,9 @@ class VAE(nn.Module):
 
         self.I = torch.eye(config["node"]).to(device)
         
+        """alignment net"""
+        self.alignnet = AlignNet(config, device)
+        
         # u = 0.5 * torch.log((1. + u) / (1. - u) + 1e-8) # tanh inverse function
         
     def forward(self, input):
@@ -122,7 +125,10 @@ class VAE(nn.Module):
 
         xhat = self.decoder(causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous())
         xhat = xhat.view(-1, 96, 96, 3)
-        return causal_latent_orig, causal_latent, xhat, vq_loss
+        
+        label_hat = self.alignnet(causal_latent)
+        
+        return causal_latent_orig, causal_latent, xhat, vq_loss, label_hat
 #%%
 def main():
     config = {
@@ -137,11 +143,9 @@ def main():
     model = VAE(B, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
-    alignnet = AlignNet(config, 'cpu')
         
     batch = torch.rand(config["n"], 96, 96, 3)
-    causal_latent_orig, causal_latent, xhat, vq_loss = model(batch)
-    label_hat = alignnet(causal_latent)
+    causal_latent_orig, causal_latent, xhat, vq_loss, label_hat = model(batch)
     
     assert causal_latent_orig.shape == (config["n"], config["embedding_dim"], config["node"])
     assert causal_latent.shape == (config["n"], config["embedding_dim"], config["node"])
