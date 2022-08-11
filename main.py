@@ -187,10 +187,6 @@ def main():
     wandb.watch(model, log_freq=100) # tracking gradients
     model.train()
     
-    # model.vq_layer.embedding.weight
-    # latent = model.encoder(nn.Flatten()(batch))
-    # model.vq_layer(latent)
-    
     # for epoch in tqdm.tqdm(range(config["epochs"]), desc="optimization for ML"):
     for epoch in range(config["epochs"]):
         logs, B, xhat = train(dataloader, model, B, config, optimizer, device)
