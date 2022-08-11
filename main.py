@@ -44,7 +44,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["linear", "LGP", "nonlinear(tanh)"], # AddictiveNoiseModel
+    tags=["GLSEM", "LGP"],
 )
 #%%
 import argparse
@@ -56,10 +56,12 @@ def get_args(debug):
     
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--num_embeddings", default=100, type=int,
+    parser.add_argument("--num_embeddings", default=10, type=int,
                         help="the number of embedding vectors")
-    parser.add_argument("--embedding_dim", default=1, type=int,
+    parser.add_argument("--embedding_dim", default=2, type=int,
                         help="dimension of embedding vector")
+    parser.add_argument("--hidden_dim", default=4, type=int,
+                        help="dimension of coupling layer")
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
@@ -172,7 +174,7 @@ def main():
     
     """Estimated Causal Adjacency Matrix"""
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = torch.tensor(np.array([[-1, -1], [1, 1]])) # example
+    B[:2, 2:] = torch.tensor(np.array([[1, 1], [1, 1]])) # example
     
     model = VAE(B, config, device)
     model.to(device)
