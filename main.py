@@ -217,11 +217,11 @@ def main():
     plt.close()
     wandb.log({'reconstruction': wandb.Image(fig)})
 
-    # """model save"""
-    # torch.save(model.state_dict(), './assets/model.pth')
-    # artifact = wandb.Artifact('model', type='model') # description=""
-    # artifact.add_file('./assets/model.pth')
-    # wandb.log_artifact(artifact)
+    """model save"""
+    torch.save(model.state_dict(), './assets/model.pth')
+    artifact = wandb.Artifact('model', type='model') # description=""
+    artifact.add_file('./assets/model.pth')
+    wandb.log_artifact(artifact)
     
     # """model load"""
     # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v1', type='model')
