@@ -83,13 +83,13 @@ def get_args(debug):
                         help='h value tolerance')
     parser.add_argument('--w_threshold', default=0.5, type=float,
                         help='weight adjacency matrix threshold')
-    parser.add_argument('--lambda', default=0.1, type=float,
+    parser.add_argument('--lambda', default=0.2, type=float,
                         help='weight of LASSO regularization')
-    parser.add_argument('--progress_rate', default=0.1, type=float,
+    parser.add_argument('--progress_rate', default=0.25, type=float,
                         help='progress rate')
     parser.add_argument('--rho_max', default=1e+16, type=float,
                         help='rho max')
-    parser.add_argument('--rho_rate', default=5, type=float,
+    parser.add_argument('--rho_rate', default=2, type=float,
                         help='rho rate')
 
     if debug:
