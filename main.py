@@ -231,6 +231,46 @@ def main():
     # model = VAE(config)
     # model.load_state_dict(torch.load(model_dir + '/model.pth'))
     
+    """test dataset"""
+    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
+    # test_x = []
+    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
+    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
+    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
+    # test_x = torch.Tensor(test_x) 
+    
+    # model.eval()
+    
+    # """intervention"""
+    # causal_latent_orig, causal_latent, xhat, vq_loss, label_hat = model(test_x[:config["batch_size"]])
+    # plt.imshow((test_x[0].cpu().detach().numpy() + 1) / 2)
+    # plt.axis('off')
+    # plt.savefig('./assets/original.png')
+    # plt.close()
+    
+    # """reconstruction with intervention"""
+    # latent = model.encoder(nn.Flatten()(test_x[:config["batch_size"]]))
+    # epsilon, _ = model.vq_layer(latent)
+    
+    # z = causal_latent_orig.clone().detach()[0]
+    # e = epsilon[0]
+    # do_index = 1
+    # do_value = -100
+    # for j in range(config["node"]):
+    #     if j == do_index:
+    #         z[:, [j]] = do_value
+    #     else:
+    #         if j == 0:  # root node
+    #             z[:, [j]] = e[j, :]
+    #         z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(model.B)[:j, [j]].to(device)) + e[j, :]
+    # z = torch.tanh(z)
+    
+    # do_xhat = model.decoder(z.unsqueeze(dim=0)).view(96, 96, 3)
+    # plt.imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
+    # plt.axis('off')
+    # plt.savefig('./assets/do_recon.png')
+    # plt.close()
+    
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
