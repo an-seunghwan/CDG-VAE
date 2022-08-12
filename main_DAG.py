@@ -19,6 +19,7 @@ from utils.model_DAG import GeneralizedLinearSEM
 
 from utils.simulation import (
     set_random_seed,
+    seed_worker,
     is_dag,
     count_accuracy
 )
@@ -160,7 +161,6 @@ def main():
     wandb.config.update(config)
 
     set_random_seed(config["seed"])
-    torch.manual_seed(config["seed"])
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
 
@@ -175,7 +175,9 @@ def main():
     dataset = TensorDataset(label) 
     dataloader = DataLoader(dataset, 
                             batch_size=config["batch_size"],
-                            shuffle=True)
+                            shuffle=True,
+                            num_workers=0,
+                            worker_init_fn=seed_worker)
 
     model = GeneralizedLinearSEM(config, device)
     B_est = nn.Parameter(torch.zeros((config["node"], config["node"]), 

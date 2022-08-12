@@ -4,19 +4,25 @@ import networkx as nx
 import numpy as np
 import random
 import torch
+import os
 #%%
-"""for reproducibility"""
+"""
+For Reproducibility!
+Reference
+[1]: https://tempdev.tistory.com/28
+"""
 def set_random_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    # torch.cuda.manual_seed_all(seed) # if use multi-GPU
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
     random.seed(seed)
-    
-    # random.seed(seed)
-    # np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+def seed_worker(_worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 #%%
 def is_dag(W: np.ndarray):
     """check DAGness
