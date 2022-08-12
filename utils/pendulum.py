@@ -15,6 +15,7 @@ import math
 import numpy as np
 import pandas as pd 
 import tqdm
+import random
 import warnings
 warnings.filterwarnings('ignore')
 #%%
@@ -27,7 +28,11 @@ train = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 #%%
 """Addictive Noise Data Generating Process"""
-np.random.seed(1)
+seed = 1
+np.random.seed(seed)
+random.seed(seed)
+os.environ["PYTHONHASHSEED"] = str(seed)
+
 varphi = -0.1 # -1 ~ 1
 theta = 0.1 # -1 ~ 1
 center = (10, 10.5)
