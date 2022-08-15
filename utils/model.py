@@ -53,26 +53,26 @@ class VectorQuantizer(nn.Module):
         
         return quantized_latent, vq_loss 
 #%%
-class AlignNet(nn.Module):
-    def __init__(self, config, device, output_dim=1, hidden_dim=4):
-        super(AlignNet, self).__init__()
+# class AlignNet(nn.Module):
+#     def __init__(self, config, device, output_dim=1, hidden_dim=4):
+#         super(AlignNet, self).__init__()
         
-        self.config = config
-        self.device = device
+#         self.config = config
+#         self.device = device
         
-        self.net = [
-            nn.Sequential(
-                nn.Linear(config["embedding_dim"], hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, output_dim)
-                ).to(device) 
-            for _ in range(config["node"])]
+#         self.net = [
+#             nn.Sequential(
+#                 nn.Linear(config["embedding_dim"], hidden_dim),
+#                 nn.ReLU(),
+#                 nn.Linear(hidden_dim, output_dim)
+#                 ).to(device) 
+#             for _ in range(config["node"])]
         
-    def forward(self, input):
-        split_input = list(map(lambda x: x.squeeze(dim=1), torch.split(input, 1, dim=1)))
-        h = list(map(lambda x, layer: layer(x), split_input, self.net))
-        h = torch.cat(h, dim=1)
-        return h
+#     def forward(self, input):
+#         split_input = list(map(lambda x: x.squeeze(dim=1), torch.split(input, 1, dim=1)))
+#         h = list(map(lambda x, layer: layer(x), split_input, self.net))
+#         h = torch.cat(h, dim=1)
+#         return h
 #%%
 class VAE(nn.Module):
     def __init__(self, B, config, device):
@@ -98,13 +98,20 @@ class VAE(nn.Module):
         self.B = B.to(device) # binary adjacency matrix
         # self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
         
-        """NPSEM"""
-        self.npsem = [nn.Sequential(
-                nn.Linear(config["node"] * config["embedding_dim"] + config["embedding_dim"], config["npsem_dim"]),
+        """Shared layer"""
+        self.shared = [nn.Sequential(
+                nn.Linear(config["node"] * config["embedding_dim"] + config["embedding_dim"], config["hidden_dim"]),
                 nn.ReLU(),
-                nn.Linear(config["npsem_dim"], config["embedding_dim"]),
+            ) for _ in range(config["node"])]
+        
+        """NPSEM: NO assumptions"""
+        self.npsem = [nn.Sequential(
+                nn.Linear(config["hidden_dim"], config["embedding_dim"]),
                 nn.Tanh(),
             ) for _ in range(config["node"])]
+        
+        """Alignment"""
+        self.alignnet = [nn.Linear(config["hidden_dim"], 1).to(device) for _ in range(config["node"])]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -116,9 +123,6 @@ class VAE(nn.Module):
             nn.Tanh()
         ).to(device)
 
-        """alignment net"""
-        self.alignnet = AlignNet(config, device, hidden_dim=config["align_dim"])
-        
     def forward(self, input):
         latent = self.encoder(nn.Flatten()(input)) # [batch, node * embedding_dim]
         
@@ -132,14 +136,15 @@ class VAE(nn.Module):
 
         """Latent Generating Process"""
         causal_latent = torch.zeros(input.size(0), self.config["node"], self.config["embedding_dim"])
+        label_hat = torch.zeros(input.size(0), self.config["node"])
         for j in range(self.config["node"]):
             h = (self.B[:, [j]] * causal_latent).view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous()
-            causal_latent[:, j, :] = self.npsem[j](torch.cat([h, exogenous[j]], dim=1))
+            h = self.shared[j](torch.cat([h, exogenous[j]], dim=1))
+            causal_latent[:, j, :] = self.npsem[j](h)
+            label_hat[:, [j]] = self.alignnet[j](h)
 
         xhat = self.decoder(causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous())
         xhat = xhat.view(-1, 96, 96, 3)
-        
-        label_hat = self.alignnet(causal_latent)
         
         return causal_latent, xhat, vq_loss, label_hat
 #%%
@@ -150,8 +155,7 @@ def main():
         "node": 4,
         "embedding_dim": 2,
         "beta": 0.25,
-        "npsem_dim": 2, 
-        "align_dim": 4, 
+        "hidden_dim": 2, 
     }
     
     B = torch.randn(config["node"], config["node"]) / 10 + torch.eye(config["node"])

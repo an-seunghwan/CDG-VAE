@@ -44,7 +44,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["GLSEM", "LGP"],
+    tags=["NPSEM", "VQVAE"],
 )
 #%%
 import argparse
@@ -58,10 +58,12 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--num_embeddings", default=10, type=int,
                         help="the number of embedding vectors")
-    parser.add_argument("--embedding_dim", default=2, type=int,
+    parser.add_argument("--embedding_dim", default=1, type=int,
                         help="dimension of embedding vector")
-    parser.add_argument("--hidden_dim", default=4, type=int,
-                        help="dimension of coupling layer")
+    parser.add_argument("--npsem_dim", default=2, type=int,
+                        help="dimension of NPSEM layer")
+    parser.add_argument("--align_dim", default=4, type=int,
+                        help="dimension of alignment layer")
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
@@ -72,8 +74,6 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=0.25, type=float,
                         help='weight of commitment loss')
-    parser.add_argument('--lambda', default=0.1, type=float,
-                        help='weight of DAG reconstruction loss')
     parser.add_argument('--gamma', default=1, type=float,
                         help='weight of label alignment loss')
     
@@ -89,7 +89,6 @@ def train(dataloader, model, B, config, optimizer, device):
         'loss': [], 
         'recon': [],
         'VQ': [],
-        # 'DAGRecon': [],
         'Align': [],
     }
     
@@ -102,7 +101,7 @@ def train(dataloader, model, B, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            causal_latent_orig, causal_latent, xhat, vq_loss, label_hat = model(x_batch)
+            causal_latent, xhat, vq_loss, label_hat = model(x_batch)
             
             loss_ = []
             
@@ -114,15 +113,11 @@ def train(dataloader, model, B, config, optimizer, device):
             """VQ loss"""
             loss_.append(('VQ', vq_loss))
             
-            # """DAG reconstruction"""
-            # dag_recon = 0.5 * torch.pow(causal_latent_orig - torch.matmul(causal_latent_orig, B), 2).sum(axis=[1, 2]).mean()
-            # loss_.append(('DAGRecon', dag_recon))
-            
             """Label Alignment"""
             align_loss = 0.5 * torch.pow(label_hat - y_batch, 2).sum(axis=1).mean() 
             loss_.append(('Align', align_loss))
             
-            loss = recon + vq_loss + config["gamma"] * align_loss # + config["lambda"] * dag_recon
+            loss = recon + vq_loss + config["gamma"] * align_loss
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -135,7 +130,7 @@ def train(dataloader, model, B, config, optimizer, device):
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -174,7 +169,7 @@ def main():
     
     """Estimated Causal Adjacency Matrix"""
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = torch.tensor(np.array([[1, 1], [1, 1]])) # example
+    B[:2, 2:] = torch.tensor(np.array([[1, 1], [1, 1]]))
     
     model = VAE(B, config, device)
     model.to(device)
@@ -229,7 +224,7 @@ def main():
     # model = VAE(config)
     # model.load_state_dict(torch.load(model_dir + '/model.pth'))
     
-    """test dataset"""
+    # """test dataset"""
     # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
     # test_x = []
     # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
