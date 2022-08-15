@@ -88,7 +88,6 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["embedding_dim"]),
-            nn.BatchNorm1d(config["node"] * config["embedding_dim"]),
         ).to(device)
         
         """Build Vector Quantizer"""
@@ -111,7 +110,8 @@ class VAE(nn.Module):
             ) for _ in range(config["node"])]
         
         """Alignment"""
-        self.alignnet = [nn.Linear(config["hidden_dim"], 1).to(device) for _ in range(config["node"])]
+        self.alignnet = [nn.Linear(config["hidden_dim"], 1).to(device) 
+                        for _ in range(config["node"])]
         
         """decoder"""
         self.decoder = nn.Sequential(

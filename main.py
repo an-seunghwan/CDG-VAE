@@ -58,12 +58,10 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--num_embeddings", default=10, type=int,
                         help="the number of embedding vectors")
-    parser.add_argument("--embedding_dim", default=1, type=int,
+    parser.add_argument("--embedding_dim", default=2, type=int,
                         help="dimension of embedding vector")
-    parser.add_argument("--npsem_dim", default=2, type=int,
-                        help="dimension of NPSEM layer")
-    parser.add_argument("--align_dim", default=4, type=int,
-                        help="dimension of alignment layer")
+    parser.add_argument("--hidden_dim", default=2, type=int,
+                        help="dimension of shared layer")
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
