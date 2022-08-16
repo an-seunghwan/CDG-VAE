@@ -5,74 +5,45 @@ import torch.nn.functional as F
 
 import numpy as np
 #%%
-class VectorQuantizer(nn.Module):
-    """
-    Reference:
-    [1] https://github.com/deepmind/sonnet/blob/v2/sonnet/src/nets/vqvae.py
-    [2] https://github.com/AntixK/PyTorch-VAE/blob/a6896b944c918dd7030e7d795a8c13e5c6345ec7/models/vq_vae.py#L2
-    """
-    def __init__(self, config, device):
-        super(VectorQuantizer, self).__init__()
-        
+class PlanarFlows(nn.Module):
+    '''invertible transformation with tanh'''
+    def __init__(self,
+                 config,
+                 device='cpu'):
+        super(PlanarFlows, self).__init__()
+
         self.config = config
-        self.device = device
         
-        self.embedding = nn.Embedding(config["num_embeddings"], config["embedding_dim"]).to(device)
-        self.embedding.weight.data.uniform_(-1/config["num_embeddings"], 1/config["num_embeddings"]).to(device)
+        self.w = [(nn.Parameter(torch.randn(config["node_dim"], 1) * 0.1).to(device))
+                  for _ in range(config["flow_num"])]
+        self.b = [nn.Parameter((torch.randn(1, 1) * 0.1).to(device))
+                  for _ in range(config["flow_num"])]
+        self.u = [nn.Parameter((torch.randn(config["node_dim"], 1) * 0.1).to(device))
+                  for _ in range(config["flow_num"])]
         
-    def forward(self, latents):
-        latents = latents.to(self.device)
-        flat_latents = latents.view(-1, self.config["embedding_dim"]) # [batch x embedding_dim]
-
-        # Compute L2 distance between latents and embedding weights
-        dist = torch.sum(flat_latents ** 2, dim=1, keepdim=True) + \
-            torch.sum(self.embedding.weight ** 2, dim=1) - \
-            2 * torch.matmul(flat_latents, self.embedding.weight.t()) # [batch x embedding_dim]
-
-        # Get the encoding that has the min distance
-        encoding_index = torch.argmin(dist, dim=1).unsqueeze(1)
-
-        # Convert to one-hot encodings
-        encoding_one_hot = torch.zeros(encoding_index.size(0), self.config["num_embeddings"]).to(self.device)
-        # dim: one hot encoding dimension
-        # index: position of src
-        # value: the value of corresponding index
-        encoding_one_hot.scatter_(dim=1, index=encoding_index, value=1)
-
-        # Quantize the latents
-        quantized_latent = torch.matmul(encoding_one_hot, self.embedding.weight) # [batch x embedding_dim]
-        quantized_latent = quantized_latent.view(latents.shape)
-
-        # Compute the VQ losses
-        embedding_loss = F.mse_loss(latents.detach(), quantized_latent) # training embeddings
-        commitment_loss = F.mse_loss(latents, quantized_latent.detach()) # prevent encoder from growing
-        vq_loss = embedding_loss + self.config["beta"] * commitment_loss
-
-        # Add the residue back to the latents (straight-through gradient estimation)
-        quantized_latent = latents + (quantized_latent - latents).detach()
-        
-        return quantized_latent, vq_loss 
-#%%
-# class AlignNet(nn.Module):
-#     def __init__(self, config, device, output_dim=1, hidden_dim=4):
-#         super(AlignNet, self).__init__()
-        
-#         self.config = config
-#         self.device = device
-        
-#         self.net = [
-#             nn.Sequential(
-#                 nn.Linear(config["embedding_dim"], hidden_dim),
-#                 nn.ReLU(),
-#                 nn.Linear(hidden_dim, output_dim)
-#                 ).to(device) 
-#             for _ in range(config["node"])]
-        
-#     def forward(self, input):
-#         split_input = list(map(lambda x: x.squeeze(dim=1), torch.split(input, 1, dim=1)))
-#         h = list(map(lambda x, layer: layer(x), split_input, self.net))
-#         h = torch.cat(h, dim=1)
-#         return h
+    def build_u(self, u_, w_):
+        """sufficient condition to be invertible"""
+        term1 = -1 + torch.log(1 + torch.exp(w_.t() @ u_))
+        term2 = w_.t() @ u_
+        u_hat = u_ + (term1 - term2) * (w_ / torch.norm(w_, p=2) ** 2)
+        return u_hat
+    
+    def inverse(self, inputs):
+        h = inputs
+        for j in reversed(range(self.config["flow_num"])):
+            z = h
+            for _ in range(self.config["inverse_loop"]):
+                u_ = self.build_u(self.u[j], self.w[j]) 
+                z = h - u_.t() * torch.tanh(z @ self.w[j] + self.b[j])
+            h = z
+        return h
+            
+    def forward(self, inputs):
+        h = inputs
+        for j in range(self.config["flow_num"]):
+            u_ = self.build_u(self.u[j], self.w[j])
+            h = h + u_.t() * torch.tanh(h @ self.w[j] + self.b[j])
+        return h
 #%%
 class VAE(nn.Module):
     def __init__(self, B, config, device):
@@ -87,88 +58,92 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
-            nn.Linear(300, config["node"] * config["embedding_dim"]),
+            nn.Linear(300, config["node"] * config["node_dim"]),
+            nn.BatchNorm1d(config["node"] * config["node_dim"])
         ).to(device)
-        
-        """Build Vector Quantizer"""
-        self.vq_layer = [VectorQuantizer(config, device).to(device)
-                       for _ in range(config["node"])]
         
         self.B = B.to(device) # binary adjacency matrix
         # self.batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
         
-        """Shared layer"""
-        self.shared = [nn.Sequential(
-                nn.Linear(config["node"] * config["embedding_dim"] + config["embedding_dim"], config["hidden_dim"]),
-                nn.ReLU(),
-            ) for _ in range(config["node"])]
-        
-        """NPSEM: NO assumptions"""
-        self.npsem = [nn.Sequential(
-                nn.Linear(config["hidden_dim"], config["embedding_dim"]),
-                nn.Tanh(),
-            ) for _ in range(config["node"])]
-        
-        """Alignment"""
-        self.alignnet = [nn.Linear(config["hidden_dim"], 1).to(device) 
-                        for _ in range(config["node"])]
+        """Generalized Linear SEM: Invertible NN"""
+        self.flows = [PlanarFlows(config, device)
+                    for _ in range(config["node"])]
         
         """decoder"""
         self.decoder = nn.Sequential(
-            nn.Linear(config["node"] * config["embedding_dim"], 300),
+            nn.Linear(config["node"] * config["node_dim"], 300),
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, 3*96*96),
             nn.Tanh()
         ).to(device)
+        
+        """Prior"""
+        self.prior_nn = [nn.Sequential(
+                        nn.Linear(1, 4),
+                        nn.Tanh(),
+                        nn.Linear(4, config["node_dim"]),).to(device) 
+                        for _ in range(config["node"])]
+        
+        # """Alignment"""
+        
+        self.I = torch.eye(config["node"]).to(device)
 
+    def inverse(self, input):
+        inverse_latent = list(map(lambda x, layer: layer.inverse(torch.atanh(x)), input, self.flows))
+        return inverse_latent
+    
     def forward(self, input):
-        latent = self.encoder(nn.Flatten()(input)) # [batch, node * embedding_dim]
+        x, u = input
+        logvar = self.encoder(nn.Flatten()(x)) # [batch, node * node_dim]
         
-        """Vector Quantization of exogenous variables"""
-        latent = latent.view(-1, self.config["node"], self.config["embedding_dim"]).contiguous() # [batch, node, embedding_dim]
-        latent = [x.squeeze(dim=1) for x in torch.split(latent, 1, dim=1)]
-        vq_outputs = list(map(lambda x, layer: layer(x), latent, self.vq_layer))
-        
-        vq_loss = sum([x[1] for x in vq_outputs])
-        exogenous = [x[0] for x in vq_outputs] # [batch, embedding_dim] x node
-
         """Latent Generating Process"""
-        causal_latent = torch.zeros(input.size(0), self.config["node"], self.config["embedding_dim"])
-        label_hat = torch.zeros(input.size(0), self.config["node"])
-        for j in range(self.config["node"]):
-            h = (self.B[:, [j]] * causal_latent).view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous()
-            h = self.shared[j](torch.cat([h, exogenous[j]], dim=1))
-            causal_latent[:, j, :] = self.npsem[j](h)
-            label_hat[:, [j]] = self.alignnet[j](h)
+        epsilon = torch.exp(logvar / 2) * torch.randn(x.size(0), self.config["node"] * self.config["node_dim"])
+        epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
+        latent = torch.matmul(epsilon, torch.inverse(self.I - self.B)) # [batch, node_dim, node]
+        latent_orig = latent.clone()
+        latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node1
+        causal_latent = list(map(lambda x, layer: torch.tanh(layer(x)), latent, self.flows))
 
-        xhat = self.decoder(causal_latent.view(-1, self.config["node"] * self.config["embedding_dim"]).contiguous())
+        xhat = self.decoder(torch.cat(causal_latent, dim=1))
         xhat = xhat.view(-1, 96, 96, 3)
+
+        """prior"""
+        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(u, 1, dim=1), self.prior_nn))
+        prior_logvar = torch.cat(prior_logvar, dim=1)
         
-        return causal_latent, xhat, vq_loss, label_hat
+        return logvar, prior_logvar, latent_orig, causal_latent, xhat
 #%%
 def main():
     config = {
         "n": 10,
-        "num_embeddings": 10,
         "node": 4,
-        "embedding_dim": 2,
-        "beta": 0.25,
-        "hidden_dim": 2, 
+        "node_dim": 1, 
+        "flow_num": 3,
+        "inverse_loop": 100,
     }
     
-    B = torch.randn(config["node"], config["node"]) / 10 + torch.eye(config["node"])
+    B = torch.zeros(config["node"], config["node"])
+    B[:2, 2:] = 1
     model = VAE(B, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
         
     batch = torch.rand(config["n"], 96, 96, 3)
-    causal_latent, xhat, vq_loss, label_hat = model(batch)
+    u = torch.rand(config["n"], config["node"])
+    logvar, prior_logvar, latent_orig, causal_latent, xhat = model([batch, u])
     
-    assert causal_latent.shape == (config["n"], config["node"], config["embedding_dim"])
+    assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
+    assert prior_logvar.shape == (config["n"], config["node"] * config["node_dim"])
+    assert latent_orig.shape == (config["n"], config["node_dim"], config["node"])
+    assert causal_latent[0].shape == (config["n"], config["node_dim"])
+    assert len(causal_latent) == config["node"]
     assert xhat.shape == (config["n"], 96, 96, 3)
-    assert label_hat.shape == (config["n"], config["node"])
+    
+    inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(latent_orig, 1, dim=2)], 
+                                                        model.inverse(causal_latent))]).sum())
+    assert inverse_diff / (config["n"] * config["node"] * config["node_dim"])  < 1e-5
     
     print("Model test pass!")
 #%%
@@ -177,19 +152,18 @@ if __name__ == '__main__':
 #%%
 # config = {
 #     "n": 10,
-#     "num_embeddings": 10,
 #     "node": 4,
-#     "embedding_dim": 1,
-#     "beta": 0.25,
-#     "npsem_dim": 2, 
+#     "node_dim": 2,
 #     "align_dim": 4, 
-#     "d": 1,
+#     "flow_num": 3,
+#     "inverse_loop": 100,
 # }
 
 # B = torch.zeros(config["node"], config["node"])
 # B[:2, 2:] = 1
 
 # x = torch.randn(config["n"], 96, 96, 3)
+# u = torch.randn(config["n"], config["node"])
 
 # config = config
 # device = 'cpu'
@@ -200,28 +174,18 @@ if __name__ == '__main__':
 #     nn.ELU(),
 #     nn.Linear(300, 300),
 #     nn.ELU(),
-#     nn.Linear(300, config["node"] * config["embedding_dim"]),
-#     nn.BatchNorm1d(config["node"] * config["embedding_dim"]),
+#     nn.Linear(300, config["node"] * config["node_dim"]),
 # ).to(device)
-
-# """Build Vector Quantizer"""
-# vq_layer = [VectorQuantizer(config, device).to(device)
-#             for _ in range(config["node"])]
 
 # B = B.to(device) # weighted adjacency matrix
 # # batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
 
-# """NPSEM"""
-# npsem = [nn.Sequential(
-#     nn.Linear(config["node"] * config["embedding_dim"] + config["embedding_dim"], config["npsem_dim"]),
-#     nn.ReLU(),
-#     nn.Linear(config["npsem_dim"], config["embedding_dim"]),
-#     nn.Tanh(),
-#     ) for _ in range(config["node"])]
+# flows = [PlanarFlows(config, device)
+#          for _ in range(config["node"])]
 
 # """decoder"""
 # decoder = nn.Sequential(
-#     nn.Linear(config["node"] * config["embedding_dim"], 300),
+#     nn.Linear(config["node"] * config["node_dim"], 300),
 #     nn.ELU(),
 #     nn.Linear(300, 300),
 #     nn.ELU(),
@@ -232,26 +196,36 @@ if __name__ == '__main__':
 # I = torch.eye(config["node"]).to(device)
 
 # """alignment net"""
-# alignnet = AlignNet(config, device, hidden_dim=config["align_dim"])
+# alignnet = [nn.Sequential(
+#     nn.Linear(1, config["align_dim"]),
+#     nn.Tanh(),
+#     nn.Linear(config["align_dim"], 1),).to(device) 
+#     for _ in range(config["node"])]
 # #%%
-# latent = encoder(nn.Flatten()(x)) # [batch, node*embedding_dim]
-
-# """Vector Quantization of exogenous variables"""
-# latent = latent.view(-1, config["node"], config["embedding_dim"]).contiguous()
-# latent = [x.squeeze(dim=1) for x in torch.split(latent, 1, dim=1)]
-# vq_outputs = list(map(lambda x, layer: layer(x), latent, vq_layer))
-
-# vq_loss = sum([x[1] for x in vq_outputs])
-# exogenous = [x[0] for x in vq_outputs]
+# logvar = encoder(nn.Flatten()(x)) # [batch, node*embedding_dim]
 
 # """Latent Generating Process"""
-# causal_latent = torch.zeros(x.size(0), config["node"], config["embedding_dim"])
-# for j in range(config["node"]):
-#     h = (B[:, [j]] * causal_latent).view(-1, config["node"] * config["embedding_dim"]).contiguous()
-#     causal_latent[:, j, :] = npsem[j](torch.cat([h, exogenous[j]], dim=1))
+# epsilon = torch.exp(logvar / 2) * torch.randn(x.size(0), config["node"] * config["node_dim"])
+# epsilon = epsilon.view(-1, config["node_dim"], config["node"]).contiguous()
 
-# xhat = decoder(causal_latent.view(-1, config["node"] * config["embedding_dim"]).contiguous())
+# latent = torch.matmul(epsilon, torch.inverse(I - B))
+# latent_orig = latent.clone()
+# latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)]
+
+# causal_latent = list(map(lambda x, layer: torch.tanh(layer(x)), latent, flows))
+
+# xhat = decoder(torch.cat(causal_latent, dim=1))
 # xhat = xhat.view(-1, 96, 96, 3)
 
-# label_hat = alignnet(causal_latent)
+# """prior"""
+# prior_logvar = list(map(lambda x, layer: layer(x), torch.split(u, 1, dim=1), alignnet))
+# prior_logvar = torch.cat(prior_logvar, dim=1)
+
+# # inverse_latent = list(map(lambda x, layer: layer.inverse(torch.atanh(x)), causal_latent, flows))
+# # [x - y for x, y in zip(inverse_latent, latent)]
+# #%%
+# # causal_latent = []
+# # for j in range(config["node"]):
+# #     u_ = build_u(u[j], w[j])
+# #     causal_latent.append(latent[j] + u_.t() * torch.tanh(latent[j] @ w[j] + b[j]))
 #%%
