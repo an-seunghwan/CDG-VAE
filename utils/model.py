@@ -63,6 +63,7 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"]),
+            nn.BatchNorm1d(config["node"] * config["node_dim"])
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix
@@ -102,7 +103,7 @@ class VAE(nn.Module):
         logvar = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim]
         
         """Latent Generating Process"""
-        epsilon = torch.exp(logvar / 2) * torch.randn(image.size(0), self.config["node"] * self.config["node_dim"])
+        epsilon = torch.exp(logvar / 2) * torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
         epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         latent = torch.matmul(epsilon, torch.inverse(self.I - self.B)) # [batch, node_dim, node]
         latent_orig = latent.clone()
