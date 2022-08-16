@@ -54,7 +54,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--seed', type=int, default=1, 
+    parser.add_argument('--seed', type=int, default=5, 
                         help='seed for repeatable results')
 
     parser.add_argument('--node', default=4, type=int,
