@@ -58,7 +58,7 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=1, type=int,
+    parser.add_argument("--flow_num", default=3, type=int,
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
@@ -70,9 +70,9 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=1, type=float,
+    parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=10, type=float,
+    parser.add_argument('--lambda', default=0.1, type=float,
                         help='weight of DAG reconstruction loss')
     # parser.add_argument('--gamma', default=1, type=float,
     #                     help='weight of label alignment loss')
@@ -121,7 +121,7 @@ def train(dataloader, model, B, config, optimizer, device):
             loss_.append(('KL', KL))
 
             """DAG reconstruction"""
-            DAG_recon = torch.pow(latent_orig - latent_orig.matmul(model.B), 2).sum(axis=[1, 2]).mean()
+            DAG_recon = 0.5 * torch.pow(latent_orig - latent_orig.matmul(model.B), 2).sum(axis=[1, 2]).mean()
             loss_.append(('DAG_recon', DAG_recon))
             
             # """Label Alignment"""
@@ -162,7 +162,7 @@ def main():
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
-            label = label / label.std(axis=0)
+            # label = label / label.std(axis=0)
             self.y_data = label.round(2)
 
         def __len__(self): 

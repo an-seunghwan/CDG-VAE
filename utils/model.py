@@ -63,7 +63,6 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"]),
-            nn.BatchNorm1d(config["node"] * config["node_dim"])
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix
@@ -99,11 +98,11 @@ class VAE(nn.Module):
         return inverse_latent
     
     def forward(self, input):
-        x, u = input
-        logvar = self.encoder(nn.Flatten()(x)) # [batch, node * node_dim]
+        image, label = input
+        logvar = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim]
         
         """Latent Generating Process"""
-        epsilon = torch.exp(logvar / 2) * torch.randn(x.size(0), self.config["node"] * self.config["node_dim"])
+        epsilon = torch.exp(logvar / 2) * torch.randn(image.size(0), self.config["node"] * self.config["node_dim"])
         epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         latent = torch.matmul(epsilon, torch.inverse(self.I - self.B)) # [batch, node_dim, node]
         latent_orig = latent.clone()
@@ -114,7 +113,7 @@ class VAE(nn.Module):
         xhat = xhat.view(-1, 96, 96, 3)
 
         """prior"""
-        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(u, 1, dim=1), self.prior_nn))
+        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label, 1, dim=1), self.prior_nn))
         prior_logvar = torch.cat(prior_logvar, dim=1)
         
         return logvar, prior_logvar, latent_orig, causal_latent, xhat
