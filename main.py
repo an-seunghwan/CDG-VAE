@@ -44,7 +44,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["NPSEM", "VQVAE"],
+    tags=["GeneralizedLinearSEM", "Identifiable"],
 )
 #%%
 import argparse
@@ -56,12 +56,12 @@ def get_args(debug):
     
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--num_embeddings", default=10, type=int,
-                        help="the number of embedding vectors")
-    parser.add_argument("--embedding_dim", default=2, type=int,
-                        help="dimension of embedding vector")
-    parser.add_argument("--hidden_dim", default=2, type=int,
-                        help="dimension of shared layer")
+    parser.add_argument("--node_dim", default=1, type=int,
+                        help="dimension of each node")
+    parser.add_argument("--flow_num", default=1, type=int,
+                        help="the number of invertible NN (planar flow)")
+    parser.add_argument("--inverse_loop", default=100, type=int,
+                        help="the number of inverse loop")
     
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
@@ -70,13 +70,15 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=0.25, type=float,
-                        help='weight of commitment loss')
-    parser.add_argument('--gamma', default=1, type=float,
-                        help='weight of label alignment loss')
+    parser.add_argument('--beta', default=1, type=float,
+                        help='observation noise')
+    parser.add_argument('--lambda', default=10, type=float,
+                        help='weight of DAG reconstruction loss')
+    # parser.add_argument('--gamma', default=1, type=float,
+    #                     help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
-
+    
     if debug:
         return parser.parse_args(args=[])
     else:    
@@ -86,8 +88,8 @@ def train(dataloader, model, B, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
-        'VQ': [],
-        'Align': [],
+        'KL': [],
+        'DAG_recon': [],
     }
     
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
@@ -99,23 +101,32 @@ def train(dataloader, model, B, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            causal_latent, xhat, vq_loss, label_hat = model(x_batch)
+            logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
             
             loss_ = []
             
             """reconstruction"""
             recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
-            # recon = F.mse_loss(xhat, batch)
+            # recon = F.mse_loss(xhat, x_batch)
             loss_.append(('recon', recon))
+            
+            """KL-Divergence"""
+            KL = 0
+            KL += prior_logvar.sum(axis=1)
+            KL -= logvar.sum(axis=1)
+            KL += torch.exp(logvar - prior_logvar).sum(axis=1)
+            KL -= config["node"] * config["node_dim"]
+            KL *= 0.5
+            KL = KL.mean()
+            loss_.append(('KL', KL))
 
-            """VQ loss"""
-            loss_.append(('VQ', vq_loss))
+            """DAG reconstruction"""
+            DAG_recon = torch.pow(latent_orig - latent_orig.matmul(model.B), 2).sum(axis=[1, 2]).mean()
+            loss_.append(('DAG_recon', DAG_recon))
             
-            """Label Alignment"""
-            align_loss = 0.5 * torch.pow(label_hat - y_batch, 2).sum(axis=1).mean() 
-            loss_.append(('Align', align_loss))
+            # """Label Alignment"""
             
-            loss = recon + vq_loss + config["gamma"] * align_loss
+            loss = recon + config["beta"] * KL + config["lambda"] * DAG_recon
             loss_.append(('loss', loss))
             
             loss.backward()

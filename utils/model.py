@@ -6,7 +6,11 @@ import torch.nn.functional as F
 import numpy as np
 #%%
 class PlanarFlows(nn.Module):
-    '''invertible transformation with tanh'''
+    """invertible transformation with tanh
+    Reference:
+    [1]: http://proceedings.mlr.press/v37/rezende15.pdf
+    [2]: https://arxiv.org/pdf/1811.00995.pdf
+    """
     def __init__(self,
                  config,
                  device='cpu'):
