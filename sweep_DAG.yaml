@@ -6,20 +6,19 @@ metric:
   name: loss
 parameters:
   # seed:
-    # values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # values: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-  hidden_dim:
-    values: [4, 8]
-  replicate:
-    values: [2, 4]
+  #   values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  # hidden_dim:
+  #   values: [4, 8]
+  # replicate:
+  #   values: [2, 4]
   lambda:
-    values: [0.1, 1, 2, 5, 10]
+    values: [0.1, 1, 10]
   rho_rate:
     values: [2, 5, 10]
+  progress_rate:
+    values: [0.1, 0.25]
   w_threshold:
     values: [0.5, 0.7]
-  progress_rate:
-    values: [0.1, 0.25, 0.5]
   # batch_size:
   #   values: [32, 64, 128]
   # lr:
