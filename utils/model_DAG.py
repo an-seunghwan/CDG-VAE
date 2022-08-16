@@ -99,15 +99,15 @@ class CouplingLayer(nn.Module):
         self.scale_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), 
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim), 
-            nn.ReLU(),
+            # nn.Linear(hidden_dim, hidden_dim), 
+            # nn.ReLU(),
             nn.Linear(hidden_dim, input_dim),
             nn.Tanh()).to(device)
         self.translate_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim), 
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim), 
-            nn.ReLU(),
+            # nn.Linear(hidden_dim, hidden_dim), 
+            # nn.ReLU(),
             nn.Linear(hidden_dim, input_dim)).to(device)
         
         # self.scale_net = nn.Sequential(
@@ -142,7 +142,7 @@ class INN(nn.Module):
         self.coupling_layer = [
             CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device),
             CouplingLayer(config["replicate"], device, reverse=True, hidden_dim=config["hidden_dim"]).to(device),
-            CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device)
+            # CouplingLayer(config["replicate"], device, reverse=False, hidden_dim=config["hidden_dim"]).to(device)
         ]
         
         self.coupling_module = nn.Sequential(*self.coupling_layer)
