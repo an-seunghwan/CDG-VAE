@@ -123,6 +123,8 @@ def main():
     
     data = label[np.random.choice(len(label), int(len(label) * 0.1), replace=False), :]
 
+    from causallearn.utils.GraphUtils import GraphUtils
+    
     """PC algorithm"""
     from causallearn.search.ConstraintBased.PC import pc
     cg = pc(data=data, 
@@ -131,13 +133,11 @@ def main():
     print(cg.G)
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=names)
-    pdy.write_png('graph_PC.png')
-    Image.open('graph_PC.png')
+    pdy.write_png('assets/graph_PC.png')
+    Image.open('assets/graph_PC.png')
 
     """FCI algorithm"""
     from causallearn.search.ConstraintBased.FCI import fci
-    from causallearn.utils.GraphUtils import GraphUtils
-    
     G, edges = fci(dataset=data, 
                    independence_test_method='fisherz', 
                    alpha=0.05)
@@ -145,8 +145,53 @@ def main():
     print(G.graph)
     # visualization
     pdy = GraphUtils.to_pydot(G, labels=names)
-    pdy.write_png('graph_FCI.png')
-    Image.open('graph_FCI.png')
+    pdy.write_png('assets/graph_FCI.png')
+    Image.open('assets/graph_FCI.png')
+    
+    """GES algorithm"""
+    from causallearn.search.ScoreBased.GES import ges
+    Record = ges(X=data, 
+                 score_func='local_score_BIC')
+    # visualization
+    pdy = GraphUtils.to_pydot(Record['G'], labels=names)
+    pdy.write_png('assets/graph_GES.png')
+    Image.open('assets/graph_GES.png')
+    
+    """Exact Search algorithm"""
+    from causallearn.search.ScoreBased.ExactSearch import bic_exact_search
+    dag_est, search_stats = bic_exact_search(X=data)
+    # visualization
+    fig = plt.figure(figsize=(5, 4))
+    plt.pcolor(np.flipud(dag_est), cmap='coolwarm')
+    plt.colorbar()
+    plt.show()
+    plt.savefig('assets/graph_Exact.png')
+    plt.close()
+    
+    """ICA-based LinGAM"""
+    from causallearn.search.FCMBased import lingam
+    model = lingam.ICALiNGAM()
+    model.fit(X=data)
+    # print(model.causal_order_)
+    print(model.adjacency_matrix_)
+    fig = plt.figure(figsize=(5, 4))
+    plt.pcolor(np.flipud(model.adjacency_matrix_), cmap='coolwarm')
+    plt.colorbar()
+    plt.show()
+    plt.savefig('assets/graph_ICA_based_LinGAM.png')
+    plt.close()
+    
+    """Direct LinGAM"""
+    from causallearn.search.FCMBased import lingam
+    model = lingam.DirectLiNGAM()
+    model.fit(X=data)
+    print(model.adjacency_matrix_)
+    fig = plt.figure(figsize=(5, 4))
+    plt.pcolor(np.flipud(model.adjacency_matrix_), cmap='coolwarm')
+    plt.colorbar()
+    plt.show()
+    plt.savefig('assets/graph_Direct_LinGAM.png')
+    plt.close()
     
     # """ground-truth"""
     # B_true = np.zeros((config["node"], config["node"]))
