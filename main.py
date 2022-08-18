@@ -56,7 +56,7 @@ def get_args(debug):
     
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--node_dim", default=1, type=int,
+    parser.add_argument("--node_dim", default=2, type=int,
                         help="dimension of each node")
     parser.add_argument("--flow_num", default=3, type=int,
                         help="the number of invertible NN (planar flow)")
@@ -72,7 +72,7 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=0.1, type=float,
+    parser.add_argument('--lambda', default=1, type=float,
                         help='weight of DAG reconstruction loss')
     # parser.add_argument('--gamma', default=1, type=float,
     #                     help='weight of label alignment loss')
@@ -139,7 +139,7 @@ def train(dataloader, model, B, config, optimizer, device):
     return logs, B, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -227,51 +227,85 @@ def main():
     artifact.add_file('./assets/model.pth')
     wandb.log_artifact(artifact)
     
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v1', type='model')
-    # model_dir = artifact.download()
-    # model = VAE(config)
-    # model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    """model load"""
+    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v3', type='model')
+    model_dir = artifact.download()
+    model = VAE(B, config, device).to(device)
+    if config["cuda"]:
+        model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    else:
+        model.load_state_dict(torch.load(model_dir + '/model.pth', map_location=torch.device('cpu')))
     
-    # """test dataset"""
-    # test_imgs = os.listdir('./utils/causal_data/pendulum/test')
-    # test_x = []
-    # for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-    #     test_x.append(np.array(Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])))[:, :, :3])
-    # test_x = (np.array(test_x).astype(float) - 127.5) / 127.5
-    # test_x = torch.Tensor(test_x) 
+    """test dataset"""
+    class TestCustomDataset(Dataset): 
+        def __init__(self):
+            test_imgs = os.listdir('./utils/causal_data/pendulum/test')
+            test_x = []
+            for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
+                test_x.append(np.array(
+                    Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])).resize((96, 96))
+                    )[:, :, :3])
+            self.x_data = (np.array(test_x).astype(float) - 127.5) / 127.5
+            
+            label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
+            label = label - label.mean(axis=0)
+            # label = label / label.std(axis=0)
+            self.y_data = label.round(2)
+
+        def __len__(self): 
+            return len(self.x_data)
+
+        def __getitem__(self, idx): 
+            x = torch.FloatTensor(self.x_data[idx])
+            y = torch.FloatTensor(self.y_data[idx])
+            return x, y
     
-    # model.eval()
+    test_dataset = TestCustomDataset()
+    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
-    # """intervention"""
-    # causal_latent_orig, causal_latent, xhat, vq_loss, label_hat = model(test_x[:config["batch_size"]])
-    # plt.imshow((test_x[0].cpu().detach().numpy() + 1) / 2)
-    # plt.axis('off')
-    # plt.savefig('./assets/original.png')
-    # plt.close()
+    model.eval()
     
-    # """reconstruction with intervention"""
-    # latent = model.encoder(nn.Flatten()(test_x[:config["batch_size"]]))
-    # epsilon, _ = model.vq_layer(latent)
+    """intervention"""
+    iter_test = iter(test_dataloader)
+    x_batch, y_batch = next(iter_test)
+    if config["cuda"]:
+        x_batch = x_batch.cuda()
+        y_batch = y_batch.cuda()
     
-    # z = causal_latent_orig.clone().detach()[0]
-    # e = epsilon[0]
-    # do_index = 1
-    # do_value = -100
-    # for j in range(config["node"]):
-    #     if j == do_index:
-    #         z[:, [j]] = do_value
-    #     else:
-    #         if j == 0:  # root node
-    #             z[:, [j]] = e[j, :]
-    #         z[:, [j]] = torch.matmul(z[:, :j], torch.tensor(model.B)[:j, [j]].to(device)) + e[j, :]
-    # z = torch.tanh(z)
+    logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+    plt.imshow((x_batch[0].cpu().detach().numpy() + 1) / 2)
+    plt.axis('off')
+    plt.savefig('./assets/original.png')
+    plt.close()
     
-    # do_xhat = model.decoder(z.unsqueeze(dim=0)).view(96, 96, 3)
-    # plt.imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
-    # plt.axis('off')
-    # plt.savefig('./assets/do_recon.png')
-    # plt.close()
+    plt.imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
+    plt.axis('off')
+    plt.savefig('./assets/recon.png')
+    plt.close()
+    
+    """reconstruction with intervention"""
+    # z = torch.cat(causal_latent, dim=0).clone().detach()
+    epsilon = torch.exp(logvar / 2) * torch.randn(config["node"] * config["node_dim"]).to(device) 
+    epsilon = epsilon.view(config["node"], config["node_dim"]).contiguous()
+    
+    do_index = 0
+    do_value = 0.9
+    
+    causal_latent[do_index] = torch.tensor([[do_value, do_value]])
+    z = model.inverse(causal_latent)
+    z = torch.cat(z, dim=0).clone().detach()
+    for j in range(config["node"]):
+        if j == 0:  # root node
+            z[j, :] = epsilon[j, :]
+        z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[j, :]
+    z = torch.split(z, 1, dim=0)
+    z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
+    
+    do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+    plt.imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
+    plt.axis('off')
+    plt.savefig('./assets/do_recon.png')
+    plt.close()
     
     wandb.run.finish()
 #%%
