@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 #%%
 class VAE(nn.Module):
-    def __init__(self, mask, lasso, config, device):
+    def __init__(self, B, config, device):
         super(VAE, self).__init__()
         
         self.config = config
@@ -19,22 +19,18 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"]),
-            nn.BatchNorm1d(config["node"])
+            # nn.BatchNorm1d(config["node"])
         ).to(device)
         
-        # true
-        self.mask = mask
-        # sparse constraint
-        self.lasso = lasso 
-        # weight
-        self.B = nn.Parameter(torch.randn(config["node"], config["node"]) * 0.1).to(device)
+        """Causal Adjacency Matrix"""
+        self.B = B.to(device)
         
         """NPSEM"""
         self.npsem = [nn.Sequential(
             nn.Linear(config["node"] + 1, 4),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Linear(4, 2),
-            nn.Tanh(),
+            nn.ELU(),
             nn.Linear(2, 1),).to(device) 
             for _ in range(config["node"])]
         
@@ -48,7 +44,9 @@ class VAE(nn.Module):
             nn.Tanh()
         ).to(device)
         
-        # """Prior"""
+        """Prior"""
+        self.prior = [nn.Linear(1, 1).to(device) 
+            for _ in range(config["node"])]
         
     def forward(self, input):
         image, label = input
@@ -56,18 +54,19 @@ class VAE(nn.Module):
         
         """Latent Generating Process"""
         epsilon = torch.exp(logvar / 2) * torch.randn(image.size(0), self.config["node"]).to(self.device)
-        B = self.mask + self.B * self.lasso
+        
         align = torch.zeros((image.size(0), self.config["node"])).to(self.device)
         latent = torch.zeros((image.size(0), self.config["node"])).to(self.device)
         for j in range(self.config["node"]):
-            align[:, [j]] = self.npsem[j](torch.cat((B[:, j] * latent.clone(), epsilon[:, [j]].clone()), dim=1))
+            align[:, [j]] = self.npsem[j](torch.cat((self.B[:, j] * latent.clone(), epsilon[:, [j]].clone()), dim=1))
             latent[:, [j]] = torch.tanh(align[:, [j]].clone())
 
         xhat = self.decoder(latent)
         xhat = xhat.view(-1, 96, 96, 3)
 
         """prior"""
-        prior_logvar = label
+        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label, 1, dim=1), self.prior))
+        prior_logvar = torch.cat(prior_logvar, dim=1)
         
         return logvar, prior_logvar, latent, align, xhat
 #%%
@@ -77,15 +76,10 @@ def main():
         "node": 4,
     }
     
-    # true
-    mask = torch.zeros(config["node"], config["node"])
-    mask[:2, 2:] = 1
-    # sparse constraint
-    lasso = torch.zeros(config["node"], config["node"])
-    lasso[3, 2] = 1
-    lasso[2, 3] = 1
+    B = torch.zeros(config["node"], config["node"])
+    B[:2, 2:] = 1
     
-    model = VAE(mask, lasso, config, 'cpu')
+    model = VAE(B, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
         

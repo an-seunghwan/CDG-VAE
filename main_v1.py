@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model import (
+from utils.model_v1 import (
     VAE,
 )
 
@@ -66,15 +66,9 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=1, type=float,
+    parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda1', default=0.1, type=float,
-                        help='weight of DAG reconstruction loss')
-    parser.add_argument('--lambda2', default=0.1, type=float,
-                        help='weight of LASSO constraint')
-    parser.add_argument('--lambda3', default=0.1, type=float,
-                        help='weight of DAG constraint')
-    parser.add_argument('--lambda4', default=0.1, type=float,
+    parser.add_argument('--lambda', default=0.1, type=float,
                         help='weight of alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -84,19 +78,11 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def h_fun(W):
-    """Evaluate DAGness constraint"""
-    h = trace_expm(W * W) - W.shape[0]
-    return h
-
 def train(dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
         'KL': [],
-        'DAG_recon': [],
-        'lasso': [],
-        'h(W)': [],
         'align': [],
     }
     
@@ -114,8 +100,8 @@ def train(dataloader, model, config, optimizer, device):
             loss_ = []
             
             """reconstruction"""
-            recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
-            # recon = F.mse_loss(xhat, x_batch)
+            # recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
+            recon = F.mse_loss(xhat, x_batch)
             loss_.append(('recon', recon))
             
             """KL-Divergence"""
@@ -128,30 +114,12 @@ def train(dataloader, model, config, optimizer, device):
             KL = KL.mean()
             loss_.append(('KL', KL))
             
-            """Causal Adjacency Matrix"""
-            W = model.mask + model.B * model.lasso
-
-            """DAG Reconstruction"""
-            DAG_recon = 0.5 * torch.pow(latent - latent.matmul(W), 2).sum(axis=1).mean()
-            loss_.append(('DAG_recon', DAG_recon))
-            
-            """Sparse Constraint"""
-            lasso = torch.norm(model.B * model.lasso, p=1)
-            loss_.append(('lasso', lasso))
-            
-            """DAG Constraint"""
-            h = h_fun(W.cpu())
-            loss_.append(('h(W)', h))
-            
             """Label Alignment"""
             align = torch.pow(align - y_batch, 2).sum(axis=1).mean()
             loss_.append(('align', align))
             
             loss = recon + config["beta"] * KL 
-            loss += config["lambda1"] * DAG_recon
-            loss += config["lambda2"] * lasso
-            loss += config["lambda3"] * h
-            loss += config["lambda4"] * align
+            loss += config["lambda"] * align
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -161,7 +129,7 @@ def train(dataloader, model, config, optimizer, device):
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, W, xhat
+    return logs, xhat
 #%%
 def main():
     config = vars(get_args(debug=True)) # default configuration
@@ -202,15 +170,10 @@ def main():
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """Estimated Causal Adjacency Matrix"""
-    # true
-    mask = torch.zeros(config["node"], config["node"])
-    mask[:2, 2:] = 1
-    # sparse constraint
-    lasso = torch.zeros(config["node"], config["node"])
-    lasso[3, 2] = 1
-    lasso[2, 3] = 1
+    B = torch.zeros(config["node"], config["node"])
+    B[:2, 2:] = 1
     
-    model = VAE(mask, lasso, config, device)
+    model = VAE(B, config, device)
     model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -222,13 +185,13 @@ def main():
     model.train()
     
     for epoch in range(config["epochs"]):
-        logs, W, xhat = train(dataloader, model, config, optimizer, device)
+        logs, xhat = train(dataloader, model, config, optimizer, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
         print(print_input)
         
-        if epoch % 10 == 0:
+        if epoch % 3 == 0:
             """update log"""
             wandb.log({x : np.mean(y) for x, y in logs.items()})
             

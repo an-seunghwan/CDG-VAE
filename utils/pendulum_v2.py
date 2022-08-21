@@ -62,10 +62,9 @@ for varphi in tqdm.tqdm(varphi_list):
         
         # length = (right - left)
         # position = (left + right) / 2
-        # length = (right - left) + np.random.normal(scale=scale)
+        length = (right - left) + np.random.normal(scale=scale)
         # position = (left + right) / 2 + np.random.normal(scale=scale)
-        length = (right - left) + np.random.uniform(low=-scale, high=scale)
-        position = (left + right) / 2 + np.random.uniform(low=-scale, high=scale)
+        position = left + np.random.normal(scale=scale)
         
         objects.append(('light', varphi_))
         objects.append(('theta', theta_))
