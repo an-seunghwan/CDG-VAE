@@ -1,11 +1,8 @@
 #%%
-#Copyright (C) 2021. Huawei Technologies Co., Ltd. All rights reserved.
-#This program is free software; 
-#you can redistribute it and/or modify
-#it under the terms of the MIT License.
-#This program is distributed in the hope that it will be useful,
-#but WITHOUT ANY WARRANTY; without even the implied warranty of
-#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the MIT License for more details.
+"""
+Reference
+[1]: https://github.com/huawei-noah/trustworthyAI/blob/master/research/CausalVAE/causal_data/pendulum.py
+"""
 #%%
 import matplotlib.pyplot as plt
 import os
