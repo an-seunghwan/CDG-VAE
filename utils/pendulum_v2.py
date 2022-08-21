@@ -25,12 +25,14 @@ test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 #%%
 """Addictive Noise Data Generating Process"""
 np.random.seed(1)
-varphi_list = np.random.normal(scale=0.5, size=100)
-theta_list = np.random.normal(scale=0.5, size=100)
+# varphi_list = np.random.normal(scale=0.5, size=100)
+# theta_list = np.random.normal(scale=0.5, size=100)
+varphi_list = np.linspace(-1, 1, 100)
+theta_list = np.linspace(-1, 1, 100)
 center = (10, 10.5) # frictionless pivot coordinate
 threshold = 45 # radian scaling factor
 l = 8 # length of pendulum
-scale = 0.1
+scale = 0.1 # measurement error
 # varphi = varphi_list[0]
 # theta = theta_list[0]
 for varphi in tqdm.tqdm(varphi_list):
@@ -58,8 +60,12 @@ for varphi in tqdm.tqdm(varphi_list):
             left = b
             right = a
         
-        length = (right - left) + np.random.normal(scale=scale)
-        position = (left + right) / 2 + np.random.normal(scale=scale)
+        # length = (right - left)
+        # position = (left + right) / 2
+        # length = (right - left) + np.random.normal(scale=scale)
+        # position = (left + right) / 2 + np.random.normal(scale=scale)
+        length = (right - left) + np.random.uniform(low=-scale, high=scale)
+        position = (left + right) / 2 + np.random.uniform(low=-scale, high=scale)
         
         objects.append(('light', varphi_))
         objects.append(('theta', theta_))
