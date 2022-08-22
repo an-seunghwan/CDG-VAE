@@ -10,7 +10,7 @@ parameters:
   # flow_num:
   #   values: [4]
   # node_dim:
-  #   values: [4]
+  #   values: [1]
   beta:
     values: [0.1, 1, 10]
   lambda:
