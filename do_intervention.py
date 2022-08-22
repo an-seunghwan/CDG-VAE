@@ -197,7 +197,7 @@ def main():
     ax[1].set_title('recon')
     
     plt.tight_layout()
-    plt.savefig('./assets/original_and_recon.png')
+    plt.savefig('./assets/original_and_recon.png', bbox_inches='tight')
     plt.show()
     plt.close()
     
@@ -233,7 +233,7 @@ def main():
             # ax.flatten()[k].set_title('do({} = {})'.format(name[do_index], do_value))
         
         plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
-        plt.savefig('./assets/do_{}.png'.format(name[do_index]))
+        plt.savefig('./assets/do_{}.png'.format(name[do_index]), bbox_inches='tight')
         plt.show()
         plt.close()
         
