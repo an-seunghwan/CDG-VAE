@@ -62,8 +62,8 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
-            nn.Linear(300, config["node"] * config["node_dim"]),
-            nn.BatchNorm1d(config["node"] * config["node_dim"])
+            nn.Linear(300, config["node"] * config["node_dim"] * 2),
+            nn.BatchNorm1d(config["node"] * config["node_dim"] * 2)
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix
@@ -82,7 +82,11 @@ class VAE(nn.Module):
         ).to(device)
         
         """Prior"""
-        self.prior = [nn.Linear(1, config["node_dim"]).to(device) for _ in range(config["node"])]
+        self.prior = [nn.Sequential(
+            nn.Linear(1, 3),
+            nn.ELU(),
+            nn.Linear(3, config["node_dim"])
+            ).to(device) for _ in range(config["node"])]
         
         self.I = torch.eye(config["node"]).to(device)
 
@@ -92,10 +96,12 @@ class VAE(nn.Module):
     
     def forward(self, input):
         image, label = input
-        logvar = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim]
+        h = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
+        mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
         
         """Latent Generating Process"""
-        epsilon = torch.exp(logvar / 2) * torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
+        noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
+        epsilon = mean + torch.exp(logvar / 2) * noise
         epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         latent = torch.matmul(epsilon, torch.inverse(self.I - self.B)) # [batch, node_dim, node]
         latent_orig = latent.clone()
@@ -110,7 +116,7 @@ class VAE(nn.Module):
         prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label, 1, dim=1), self.prior))
         prior_logvar = torch.cat(prior_logvar, dim=1)
         
-        return logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat
+        return mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat
 #%%
 def main():
     config = {
@@ -129,8 +135,9 @@ def main():
         
     batch = torch.rand(config["n"], 96, 96, 3)
     u = torch.rand(config["n"], config["node"])
-    logvar, prior_logvar, latent_orig, causal_latent, align, xhat = model([batch, u])
+    mean, logvar, prior_logvar, latent_orig, causal_latent, align, xhat = model([batch, u])
     
+    assert mean.shape == (config["n"], config["node"] * config["node_dim"])
     assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert prior_logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert latent_orig.shape == (config["n"], config["node_dim"], config["node"])

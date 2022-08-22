@@ -72,7 +72,7 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=0.1, type=float,
+    parser.add_argument('--beta', default=1, type=float,
                         help='observation noise')
     parser.add_argument('--lambda', default=1, type=float,
                         help='weight of DAG reconstruction loss')
@@ -104,7 +104,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+            mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
             
             loss_ = []
             
@@ -114,7 +114,7 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('recon', recon))
             
             """KL-Divergence"""
-            KL = 0
+            KL = (torch.pow(mean, 2) / torch.exp(prior_logvar)).sum(axis=1)
             KL += prior_logvar.sum(axis=1)
             KL -= logvar.sum(axis=1)
             KL += torch.exp(logvar - prior_logvar).sum(axis=1)
@@ -234,7 +234,7 @@ def main():
     wandb.log_artifact(artifact)
     
     # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v3', type='model')
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v0', type='model')
     # model_dir = artifact.download()
     # model = VAE(B, config, device).to(device)
     # if config["cuda"]:
@@ -255,7 +255,7 @@ def main():
             
     #         label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
     #         label = label - label.mean(axis=0)
-    #         # label = label / label.std(axis=0)
+    #         label = label / label.std(axis=0)
     #         self.y_data = label.round(2)
 
     #     def __len__(self): 
@@ -278,7 +278,7 @@ def main():
     #     x_batch = x_batch.cuda()
     #     y_batch = y_batch.cuda()
     
-    # logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+    # mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
     # plt.imshow((x_batch[0].cpu().detach().numpy() + 1) / 2)
     # plt.axis('off')
     # plt.savefig('./assets/original.png')
@@ -290,20 +290,24 @@ def main():
     # plt.close()
     
     # """reconstruction with intervention"""
-    # # z = torch.cat(causal_latent, dim=0).clone().detach()
-    # epsilon = torch.exp(logvar / 2) * torch.randn(config["node"] * config["node_dim"]).to(device) 
+    # noise = torch.randn(1, config["node"] * config["node_dim"]).to(device) 
+    # epsilon = mean + torch.exp(logvar / 2) * noise
     # epsilon = epsilon.view(config["node"], config["node_dim"]).contiguous()
     
     # do_index = 0
-    # do_value = 0.9
+    # do_value = -0.9
     
-    # causal_latent[do_index] = torch.tensor([[do_value, do_value]])
+    # causal_latent[do_index] = torch.tensor([[do_value]])
+    # # causal_latent[do_index] = torch.tensor([[do_value, do_value]])
     # z = model.inverse(causal_latent)
     # z = torch.cat(z, dim=0).clone().detach()
     # for j in range(config["node"]):
-    #     if j == 0:  # root node
-    #         z[j, :] = epsilon[j, :]
-    #     z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[j, :]
+    #     if j == do_index:
+    #         continue
+    #     else:
+    #         if j == 0:  # root node
+    #             z[j, :] = epsilon[j, :]
+    #         z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[j, :]
     # z = torch.split(z, 1, dim=0)
     # z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
     
