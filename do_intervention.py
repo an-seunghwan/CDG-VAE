@@ -122,22 +122,13 @@ def main():
             return x, y
     
     dataset = CustomDataset()
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
     
     name = ['light', 'angle', 'length', 'position']
     
     """Estimated Causal Adjacency Matrix"""
     B = torch.zeros(config["node"], config["node"])
     B[:2, 2:] = 1
-    
-    """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v7', type='model')
-    model_dir = artifact.download()
-    model = VAE(B, config, device).to(device)
-    if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/model.pth'))
-    else:
-        model.load_state_dict(torch.load(model_dir + '/model.pth', map_location=torch.device('cpu')))
     
     """test dataset"""
     class TestCustomDataset(Dataset): 
@@ -165,6 +156,15 @@ def main():
     
     test_dataset = TestCustomDataset()
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    
+    """model load"""
+    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v7', type='model')
+    model_dir = artifact.download()
+    model = VAE(B, config, device).to(device)
+    if config["cuda"]:
+        model.load_state_dict(torch.load(model_dir + '/model.pth'))
+    else:
+        model.load_state_dict(torch.load(model_dir + '/model.pth', map_location=torch.device('cpu')))
     
     model.eval()
     
@@ -239,6 +239,115 @@ def main():
         
         wandb.log({'do intervention on {}'.format(name[do_index]): wandb.Image(fig)})
     
+    """for specific example"""
+    iter_test = iter(test_dataloader)
+    count = 25
+    for _ in tqdm.tqdm(range(count)):
+        x_batch, y_batch = next(iter_test)
+    
+    if config["cuda"]:
+        x_batch = x_batch.cuda()
+        y_batch = y_batch.cuda()
+    
+    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+    
+    # using only mean
+    epsilon = mean
+    
+    fig, ax = plt.subplots(1, 6, figsize=(12, 2))
+    
+    ax[0].imshow((x_batch[0].cpu().detach().numpy() + 1) / 2)
+    ax[0].axis('off')
+    ax[0].set_title('original')
+    
+    ax[1].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
+    ax[1].axis('off')
+    ax[1].set_title('recon')
+    
+    # plt.tight_layout()
+    # plt.show()
+    # plt.close()
+    
+    # do-intervention
+    for k, (do_index, do_value) in enumerate([(0, 0.0), (1, 0.6), (2, 0.0), (3, -0.8)]):
+        do_value = round(do_value, 1)
+        causal_latent_ = [x.clone() for x in causal_latent]
+        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+        z = model.inverse(causal_latent_)
+        z = torch.cat(z, dim=0).clone().detach()
+        for j in range(config["node"]):
+            if j == do_index:
+                continue
+            else:
+                if j == 0:  # root node
+                    z[j, :] = epsilon[:, j]
+                z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
+        z = torch.split(z, 1, dim=0)
+        z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
+        
+        do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+
+        ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
+        ax.flatten()[k+2].axis('off')
+        ax.flatten()[k+2].set_title('do({} = {})'.format(name[do_index], do_value))
+    
+    # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
+    plt.savefig('./assets/intervention_result.png', bbox_inches='tight')
+    plt.show()
+    plt.close()
+        
+    # """for several examples"""
+    # if not os.path.exists('./assets/do_intervention'): 
+    #     os.makedirs('./assets/do_intervention')
+    
+    # iter_test = iter(test_dataloader)
+    # count = 100
+    # for num in tqdm.tqdm(range(count)):
+    #     x_batch, y_batch = next(iter_test)
+        
+    #     if config["cuda"]:
+    #         x_batch = x_batch.cuda()
+    #         y_batch = y_batch.cuda()
+    
+    #     mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+        
+    #     # using only mean
+    #     epsilon = mean
+        
+    #     # do-intervention
+    #     # do_index = 0
+    #     # do_value = 0
+    #     for do_index in range(config["node"]):
+    #         fig, ax = plt.subplots(3, 3, figsize=(5, 5))
+            
+    #         for k, do_value in enumerate(np.linspace(-0.8, 0.8, 9)):
+    #             do_value = round(do_value, 1)
+    #             causal_latent_ = [x.clone() for x in causal_latent]
+    #             causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+    #             z = model.inverse(causal_latent_)
+    #             z = torch.cat(z, dim=0).clone().detach()
+    #             for j in range(config["node"]):
+    #                 if j == do_index:
+    #                     continue
+    #                 else:
+    #                     if j == 0:  # root node
+    #                         z[j, :] = epsilon[:, j]
+    #                     z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
+    #             z = torch.split(z, 1, dim=0)
+    #             z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
+                
+    #             do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+
+    #             ax.flatten()[k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
+    #             ax.flatten()[k].axis('off')
+    #             ax.flatten()[k].set_title('x = {}'.format(do_value))
+    #             # ax.flatten()[k].set_title('do({} = {})'.format(name[do_index], do_value))
+            
+    #         plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
+    #         plt.savefig('./assets/do_intervention/{}_do_{}.png'.format(num, name[do_index]), bbox_inches='tight')
+    #         # plt.show()
+    #         plt.close()
+            
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
