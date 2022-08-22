@@ -234,7 +234,7 @@ def main():
     wandb.log_artifact(artifact)
     
     # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v0', type='model')
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v2', type='model')
     # model_dir = artifact.download()
     # model = VAE(B, config, device).to(device)
     # if config["cuda"]:

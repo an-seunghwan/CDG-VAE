@@ -63,7 +63,7 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"] * 2),
-            nn.BatchNorm1d(config["node"] * config["node_dim"] * 2)
+            # nn.BatchNorm1d(config["node"] * config["node_dim"] * 2)
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix
@@ -84,6 +84,8 @@ class VAE(nn.Module):
         """Prior"""
         self.prior = [nn.Sequential(
             nn.Linear(1, 3),
+            nn.ELU(),
+            nn.Linear(3, 3),
             nn.ELU(),
             nn.Linear(3, config["node_dim"])
             ).to(device) for _ in range(config["node"])]
