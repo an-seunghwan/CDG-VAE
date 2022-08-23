@@ -55,6 +55,9 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    
+    parser.add_argument('--version', type=int, default=7, 
+                        help='model version')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
@@ -87,7 +90,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -158,7 +161,7 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v7', type='model')
+    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v{}'.format(config["version"]), type='model')
     model_dir = artifact.download()
     model = VAE(B, config, device).to(device)
     if config["cuda"]:
@@ -198,7 +201,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('./assets/original_and_recon.png', bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
@@ -234,7 +237,7 @@ def main():
         
         plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
         plt.savefig('./assets/do_{}.png'.format(name[do_index]), bbox_inches='tight')
-        plt.show()
+        # plt.show()
         plt.close()
         
         wandb.log({'do intervention on {}'.format(name[do_index]): wandb.Image(fig)})
@@ -293,8 +296,10 @@ def main():
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('./assets/intervention_result.png', bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
+    
+    wandb.log({'do intervention': wandb.Image(fig)})
         
     # """for several examples"""
     # if not os.path.exists('./assets/do_intervention'): 
