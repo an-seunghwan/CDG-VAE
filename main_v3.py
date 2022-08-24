@@ -72,7 +72,7 @@ def get_args(debug):
                         help='observation noise')
     parser.add_argument('--lambda', default=0.1, type=float,
                         help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=0.1, type=float,
+    parser.add_argument('--gamma', default=1, type=float,
                         help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -123,8 +123,18 @@ def train(dataloader, model, config, optimizer, device):
             DAG_recon = 0.5 * torch.pow(latent1 - latent2, 2).sum(axis=1).mean()
             loss_.append(('DAG_recon', DAG_recon))
             
-            """Label Alignment"""
-            align = 0.5 * torch.pow(align_latent - y_batch, 2).sum(axis=1).mean()
+            """
+            Label Alignment:
+            label ~ mean 0, std 1
+            so, (label)^2 is too small to affect loss function and optimization
+            therefore, instead of L2 loss, we adopt cross entropy (binary classification)
+            (label ~ min-max scaling)
+            """
+            # L2 loss
+            # align = 0.5 * torch.pow(align_latent - y_batch, 2).sum(axis=1).mean()
+            # cross entropy
+            align = y_batch * torch.log(align_latent) + (1. - y_batch) * torch.log(1. - align_latent)
+            align = -1 * align.sum(axis=1).mean()
             loss_.append(('align', align))
             
             loss = recon + config["beta"] * KL 
@@ -142,7 +152,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -164,8 +174,12 @@ def main():
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            label = label - label.mean(axis=0)
-            label = label / label.std(axis=0)
+            # normalization
+            # label = label - label.mean(axis=0)
+            # label = label / label.std(axis=0)
+            # min-max scaling
+            label = label + np.abs(label.min(axis=0))
+            label = label / (label.max(axis=0) + np.abs(label.min(axis=0)))
             self.y_data = label.round(2)
 
         def __len__(self): 
@@ -210,7 +224,7 @@ def main():
                 plt.subplot(3, 3, i+1)
                 plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
                 plt.axis('off')
-            plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
+            plt.savefig('./assets/tmp_image_{}.png'.format(epoch + 1))
             plt.close()
     
     """reconstruction result"""

@@ -45,12 +45,16 @@ class VAE(nn.Module):
         ).to(device)
         
         """Alignment"""
-        self.align_nets = [nn.Linear(config["node_dim"], 1).to(device) 
-                           for _ in range(config["node"])]
+        self.align_nets = [nn.Sequential(
+            nn.Linear(config["node_dim"], 1),
+            nn.Sigmoid()
+            ).to(device) for _ in range(config["node"])]
         
         """Prior"""
         self.prior = [nn.Sequential(
             nn.Linear(1, 3),
+            nn.ELU(),
+            nn.Linear(3, 3),
             nn.ELU(),
             nn.Linear(3, config["node_dim"]),
             ).to(device) for _ in range(config["node"])]
@@ -63,7 +67,6 @@ class VAE(nn.Module):
         """Latent Generating Process"""
         noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
         epsilon = mean + torch.exp(logvar / 2) * noise
-        # epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         
         latent1 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # g(z)
         latent2 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # g(z) + e
