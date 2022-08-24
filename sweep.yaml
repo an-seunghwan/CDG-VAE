@@ -12,8 +12,8 @@ parameters:
   # node_dim:
   #   values: [1]
   beta:
-    values: [0.1, 1, 10]
+    values: [0.01, 0.1, 1]
   lambda:
-    values: [0.1, 1, 10]
+    values: [0.01, 0.1, 1]
   gamma:
-    values: [0.1, 1, 10]
+    values: [0.01, 0.1, 1]

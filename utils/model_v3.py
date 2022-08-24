@@ -68,8 +68,8 @@ class VAE(nn.Module):
         noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
         epsilon = mean + torch.exp(logvar / 2) * noise
         
-        latent1 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # g(z)
-        latent2 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # g(z) + e
+        latent1 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) # g(z)
+        latent2 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) # g(z) + e
         align_latent = []
         for j in range(self.config["node"]):
             child = [j + i * self.config["node"] for i in range(self.config["node_dim"])]
