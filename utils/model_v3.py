@@ -19,7 +19,7 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"] * 2),
-            # nn.BatchNorm1d(config["node"] * config["node_dim"] * 2)
+            nn.BatchNorm1d(config["node"] * config["node_dim"] * 2)
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix
@@ -31,6 +31,7 @@ class VAE(nn.Module):
             nn.Linear(config["node"], 2),
             nn.ELU(),
             nn.Linear(2, config["node_dim"]),
+            nn.BatchNorm1d(config["node_dim"])
             ).to(device) for _ in range(config["node"])]
         
         """decoder"""
@@ -66,15 +67,16 @@ class VAE(nn.Module):
         
         latent1 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # g(z)
         latent2 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # g(z) + e
-        latent3 = torch.zeros(image.size(0), self.config["node"] * self.config["node_dim"]) # tanh(g(z) + e)
         align_latent = []
         for j in range(self.config["node"]):
             child = [j + i * self.config["node"] for i in range(self.config["node_dim"])]
-            h = self.lgp_nets[j](B[:, j].repeat(self.config["node_dim"]) * latent2)
+            h = self.lgp_nets[j](self.B[:, j].repeat(self.config["node_dim"]) * latent2)
             latent1[:, child] = h
             latent2[:, child] = h + epsilon[:, child]
-            latent3[:, child] = torch.tanh(h + epsilon[:, child])
             align_latent.append(self.align_nets[j](h + epsilon[:, child]))
+
+        # intervention range
+        latent3 = torch.tanh(latent2)
 
         xhat = self.decoder(latent3)
         xhat = xhat.view(-1, 96, 96, 3)

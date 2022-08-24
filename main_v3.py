@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v2 import (
+from utils.model_v3 import (
     VAE,
 )
 
@@ -46,7 +46,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["GeneralizedLinearSEM", "Identifiable"],
+    tags=["AddictiveNoiseModel", "Identifiable"],
 )
 #%%
 import argparse
@@ -60,10 +60,6 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=4, type=int,
-                        help="the number of invertible NN (planar flow)")
-    parser.add_argument("--inverse_loop", default=100, type=int,
-                        help="the number of inverse loop")
     
     parser.add_argument('--epochs', default=200, type=int,
                         help='maximum iteration')
@@ -104,7 +100,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+            mean, logvar, prior_logvar, latent1, latent2, latent3, align_latent, xhat = model([x_batch, y_batch])
             
             loss_ = []
             
@@ -118,17 +114,17 @@ def train(dataloader, model, config, optimizer, device):
             KL += prior_logvar.sum(axis=1)
             KL -= logvar.sum(axis=1)
             KL += torch.exp(logvar - prior_logvar).sum(axis=1)
-            KL -= config["node"]
+            KL -= config["node"] * config["node_dim"]
             KL *= 0.5
             KL = KL.mean()
             loss_.append(('KL', KL))
             
             """DAG reconstruction"""
-            DAG_recon = 0.5 * torch.pow(latent_orig - latent_orig.matmul(model.B), 2).sum(axis=[1, 2]).mean()
+            DAG_recon = 0.5 * torch.pow(latent1 - latent2, 2).sum(axis=1).mean()
             loss_.append(('DAG_recon', DAG_recon))
             
             """Label Alignment"""
-            align = 0.5 * torch.pow(torch.cat(align_latent, dim=1) - y_batch, 2).sum(axis=1).mean()
+            align = 0.5 * torch.pow(align_latent - y_batch, 2).sum(axis=1).mean()
             loss_.append(('align', align))
             
             loss = recon + config["beta"] * KL 
@@ -146,7 +142,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -228,9 +224,9 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
 
     """model save"""
-    torch.save(model.state_dict(), './assets/model.pth')
-    artifact = wandb.Artifact('model', type='model') # description=""
-    artifact.add_file('./assets/model.pth')
+    torch.save(model.state_dict(), './assets/model_v3.pth')
+    artifact = wandb.Artifact('model_v3', type='model') # description=""
+    artifact.add_file('./assets/model_v3.pth')
     wandb.log_artifact(artifact)
     
     wandb.run.finish()
