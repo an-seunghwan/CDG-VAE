@@ -174,9 +174,6 @@ def main():
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            # normalization
-            # label = label - label.mean(axis=0)
-            # label = label / label.std(axis=0)
             # min-max scaling
             label = label + np.abs(label.min(axis=0))
             label = label / (label.max(axis=0) + np.abs(label.min(axis=0)))
