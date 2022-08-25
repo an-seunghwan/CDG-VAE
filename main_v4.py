@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v2 import (
+from utils.model_v4 import (
     VAE,
 )
 
