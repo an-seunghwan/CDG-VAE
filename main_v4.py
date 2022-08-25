@@ -60,7 +60,7 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=4, type=int,
+    parser.add_argument("--flow_num", default=8, type=int,
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
@@ -101,6 +101,20 @@ def train(dataloader, model, config, optimizer, device):
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
         
+        # h = model.encoder(nn.Flatten()(x_batch)) # [batch, node * node_dim * 2]
+        # mean, logvar = torch.split(h, model.config["node"] * model.config["node_dim"], dim=1)
+        
+        # """Latent Generating Process"""
+        # noise = torch.randn(x_batch.size(0), model.config["node"] * model.config["node_dim"]).to(model.device) 
+        # epsilon = mean + torch.exp(logvar / 2) * noise
+        # epsilon = epsilon.view(-1, model.config["node_dim"], model.config["node"]).contiguous()
+        # latent = torch.matmul(epsilon, torch.inverse(model.I - model.B)) # [batch, node_dim, node]
+        # latent_orig = latent.clone()
+        # # latent_orig.squeeze(dim=1).detach().numpy().astype(float).round(1)
+        # latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
+        # align_latent = list(map(lambda x, layer: layer(x), latent, model.flows))
+        # causal_latent = [torch.tanh(x) for x in align_latent]
+                
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
@@ -146,7 +160,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
