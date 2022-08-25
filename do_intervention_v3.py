@@ -108,9 +108,8 @@ def main():
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            # min-max scaling
-            label = label + np.abs(label.min(axis=0))
-            label = label / (label.max(axis=0) + np.abs(label.min(axis=0)))
+            label = label - label.mean(axis=0)
+            label = label / label.std(axis=0)
             self.y_data = label.round(2)
 
         def __len__(self): 
@@ -142,9 +141,8 @@ def main():
             self.x_data = (np.array(test_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
-            # min-max scaling
-            label = label + np.abs(label.min(axis=0))
-            label = label / (label.max(axis=0) + np.abs(label.min(axis=0)))
+            label = label - label.mean(axis=0)
+            label = label / label.std(axis=0)
             self.y_data = label.round(2)
 
         def __len__(self): 

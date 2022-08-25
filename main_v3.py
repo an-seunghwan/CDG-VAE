@@ -123,18 +123,8 @@ def train(dataloader, model, config, optimizer, device):
             DAG_recon = 0.5 * torch.pow(latent1 - latent2, 2).sum(axis=1).mean()
             loss_.append(('DAG_recon', DAG_recon))
             
-            """
-            Label Alignment:
-            label ~ mean 0, std 1
-            so, (label)^2 is too small to affect loss function and optimization
-            therefore, instead of L2 loss, we adopt cross entropy (binary classification)
-            (label ~ min-max scaling)
-            """
-            # L2 loss
-            # align = 0.5 * torch.pow(align_latent - y_batch, 2).sum(axis=1).mean()
-            # cross entropy
-            align = y_batch * torch.log(align_latent) + (1. - y_batch) * torch.log(1. - align_latent)
-            align = -1 * align.sum(axis=1).mean()
+            """Label Alignment"""
+            align = 0.5 * torch.pow(align_latent - y_batch, 2).sum(axis=1).mean() # L2 loss
             loss_.append(('align', align))
             
             loss = recon + config["beta"] * KL 
@@ -174,9 +164,8 @@ def main():
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            # min-max scaling
-            label = label + np.abs(label.min(axis=0))
-            label = label / (label.max(axis=0) + np.abs(label.min(axis=0)))
+            label = label - label.mean(axis=0)
+            label = label / label.std(axis=0)
             self.y_data = label.round(2)
 
         def __len__(self): 

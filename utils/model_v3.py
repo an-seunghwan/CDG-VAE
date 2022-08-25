@@ -19,7 +19,7 @@ class VAE(nn.Module):
             nn.Linear(300, 300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"] * 2),
-            # nn.BatchNorm1d(config["node"] * config["node_dim"] * 2)
+            # nn.BatchNorm1d(config["node"] * config["node_dim"] * 2) 
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix
@@ -45,10 +45,8 @@ class VAE(nn.Module):
         ).to(device)
         
         """Alignment"""
-        self.align_nets = [nn.Sequential(
-            nn.Linear(config["node_dim"], 1),
-            nn.Sigmoid()
-            ).to(device) for _ in range(config["node"])]
+        self.align_nets = [nn.Linear(config["node_dim"], 1).to(device) 
+                           for _ in range(config["node"])]
         
         """Prior"""
         self.prior = [nn.Sequential(
