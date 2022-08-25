@@ -56,14 +56,14 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    parser.add_argument('--version', type=int, default=1, 
+    parser.add_argument('--version', type=int, default=0, 
                         help='model version')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=4, type=int,
+    parser.add_argument("--flow_num", default=8, type=int,
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
@@ -141,13 +141,19 @@ def main():
     """
     # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B[dataset.name.index('light'), dataset.name.index('length')] = 1
-    B[dataset.name.index('light'), dataset.name.index('position')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
-    B[dataset.name.index('length'), dataset.name.index('position')] = 1
+    B_value = 1
+    B[dataset.name.index('light'), dataset.name.index('length')] = B_value
+    B[dataset.name.index('light'), dataset.name.index('position')] = B_value
+    B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
+    B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
+    B[dataset.name.index('length'), dataset.name.index('position')] = B_value
     # B[:2, 2:] = 1
     # B[2, 3] = 1
+    
+    """adjacency matrix scaling"""
+    indegree = B.sum(axis=0)
+    mask = (indegree != 0)
+    B[:, mask] = B[:, mask] / indegree[mask]
     
     """test dataset"""
     class TestCustomDataset(Dataset): 
@@ -176,7 +182,7 @@ def main():
             return x, y
     
     test_dataset = TestCustomDataset()
-    test_dataloader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v4:v{}'.format(config["version"]), type='model')
@@ -225,42 +231,42 @@ def main():
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     
     # do-intervention
-    # do_index = 0
-    # do_value = 0
+    do_index = 0
+    do_value = 0
     for do_index in range(config["node"]):
         fig, ax = plt.subplots(3, 3, figsize=(5, 5))
         
         for k, do_value in enumerate(np.linspace(-0.8, 0.8, 9)):
             do_value = round(do_value, 1)
             causal_latent_ = [x.clone() for x in causal_latent]
-            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
-            # causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+            # causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
+            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
             z = model.inverse(causal_latent_)
-            z = torch.cat(z, dim=1).clone().detach()
             
-            for j in range(config["node"]):
-                if j == do_index:
-                    continue
-                else:
-                    if j == 0:  # root node
-                        z[:, j] = epsilon[:, j]
-                    z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
-            z = torch.split(z, 1, dim=1)
-            
-            # z = torch.cat(z, dim=0).clone().detach()
+            # z = torch.cat(z, dim=1).clone().detach()
             # for j in range(config["node"]):
             #     if j == do_index:
             #         continue
             #     else:
             #         if j == 0:  # root node
-            #             z[j, :] = epsilon[:, j]
-            #         z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
-            # z = torch.split(z, 1, dim=0)
+            #             z[:, j] = epsilon[:, j]
+            #         z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+            # z = torch.split(z, 1, dim=1)
+            
+            z = torch.cat(z, dim=0).clone().detach()
+            for j in range(config["node"]):
+                if j == do_index:
+                    continue
+                else:
+                    if j == 0:  # root node
+                        z[j, :] = epsilon[:, j]
+                    z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
+            z = torch.split(z, 1, dim=0)
             
             z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
             
-            do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
-            # do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+            # do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
+            do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
 
             ax.flatten()[k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
             ax.flatten()[k].axis('off')
@@ -304,37 +310,37 @@ def main():
     # plt.close()
     
     # do-intervention
-    for k, (do_index, do_value) in enumerate([(0, 0.0), (1, 0.6), (2, -0.8), (3, -0.8)]):
+    for k, (do_index, do_value) in enumerate([(0, 0.0), (1, 0.6), (2, 0.5), (3, -0.5)]):
         do_value = round(do_value, 1)
         causal_latent_ = [x.clone() for x in causal_latent]
-        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
-        # causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+        # causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
+        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
         z = model.inverse(causal_latent_)
-        z = torch.cat(z, dim=1).clone().detach()
         
-        for j in range(config["node"]):
-            if j == do_index:
-                continue
-            else:
-                if j == 0:  # root node
-                    z[:, j] = epsilon[:, j]
-                z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
-        z = torch.split(z, 1, dim=1)
-        
-        # z = torch.cat(z, dim=0).clone().detach()
+        # z = torch.cat(z, dim=1).clone().detach()
         # for j in range(config["node"]):
         #     if j == do_index:
         #         continue
         #     else:
         #         if j == 0:  # root node
-        #             z[j, :] = epsilon[:, j]
-        #         z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
-        # z = torch.split(z, 1, dim=0)
+        #             z[:, j] = epsilon[:, j]
+        #         z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+        # z = torch.split(z, 1, dim=1)
+        
+        z = torch.cat(z, dim=0).clone().detach()
+        for j in range(config["node"]):
+            if j == do_index:
+                continue
+            else:
+                if j == 0:  # root node
+                    z[j, :] = epsilon[:, j]
+                z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
+        z = torch.split(z, 1, dim=0)
         
         z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
         
-        do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
-        # do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+        # do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
+        do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
 
         ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
         ax.flatten()[k+2].axis('off')
