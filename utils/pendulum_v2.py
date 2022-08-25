@@ -108,5 +108,5 @@ for varphi in tqdm.tqdm(varphi_list):
 # len(train_imgs)
 # label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
 # label.std(axis=0).round(2)
-# label.mean(axis=0).round(2)
+# # label.mean(axis=0).round(2)
 #%%

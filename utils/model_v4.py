@@ -59,12 +59,11 @@ class VAE(nn.Module):
         """encoder"""
         self.encoder = nn.Sequential(
             nn.Linear(3*96*96, 300),
-            nn.BatchNorm1d(300),
             nn.ELU(),
             nn.Linear(300, 300),
-            nn.BatchNorm1d(300),
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"] * 2),
+            # nn.BatchNorm1d(config["node"] * config["node_dim"] * 2),
         ).to(device)
         
         self.B = B.to(device) # binary adjacency matrix

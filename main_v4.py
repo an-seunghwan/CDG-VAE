@@ -146,7 +146,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -197,13 +197,19 @@ def main():
     """
     # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B[dataset.name.index('light'), dataset.name.index('length')] = 1
-    B[dataset.name.index('light'), dataset.name.index('position')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
-    B[dataset.name.index('length'), dataset.name.index('position')] = 1
+    B_value = 1
+    B[dataset.name.index('light'), dataset.name.index('length')] = B_value
+    B[dataset.name.index('light'), dataset.name.index('position')] = B_value
+    B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
+    B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
+    B[dataset.name.index('length'), dataset.name.index('position')] = B_value
     # B[:2, 2:] = 1
     # B[2, 3] = 1
+    
+    """adjacency matrix scaling"""
+    indegree = B.sum(axis=0)
+    mask = (indegree != 0)
+    B[:, mask] = B[:, mask] / indegree[mask]
     
     model = VAE(B, config, device)
     model.to(device)
