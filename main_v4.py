@@ -123,7 +123,7 @@ def train(dataloader, model, config, optimizer, device):
             KL = KL.mean()
             loss_.append(('KL', KL))
             
-            """DAG reconstruction"""
+            """DAG reconstruction""" # prior constraint without trainable variance
             DAG_recon = 0.5 * torch.pow(latent_orig - latent_orig.matmul(model.B), 2).sum(axis=[1, 2]).mean()
             loss_.append(('DAG_recon', DAG_recon))
             
@@ -169,6 +169,7 @@ def main():
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
             label = label / label.std(axis=0)
             self.y_data = label.round(2)
             self.name = ['light', 'angle', 'length', 'position']
@@ -184,9 +185,25 @@ def main():
     dataset = CustomDataset()
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
-    """Estimated Causal Adjacency Matrix"""
+    """
+    Estimated Causal Adjacency Matrix
+    light -> length
+    light -> position
+    angle -> length
+    angle -> position
+    length -- position
+    
+    Since var(length) < var(position), we set length -> position
+    """
+    # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = 1
+    B[dataset.name.index('light'), dataset.name.index('length')] = 1
+    B[dataset.name.index('light'), dataset.name.index('position')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
+    B[dataset.name.index('length'), dataset.name.index('position')] = 1
+    # B[:2, 2:] = 1
+    # B[2, 3] = 1
     
     model = VAE(B, config, device)
     model.to(device)
@@ -229,9 +246,9 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
 
     """model save"""
-    torch.save(model.state_dict(), './assets/model.pth')
-    artifact = wandb.Artifact('model', type='model') # description=""
-    artifact.add_file('./assets/model.pth')
+    torch.save(model.state_dict(), './assets/model_v4.pth')
+    artifact = wandb.Artifact('model_v4', type='model') # description=""
+    artifact.add_file('./assets/model_v4.pth')
     wandb.log_artifact(artifact)
     
     wandb.run.finish()
