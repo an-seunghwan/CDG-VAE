@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v2 import (
+from utils.model_v4 import (
     VAE,
 )
 
@@ -56,7 +56,7 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    parser.add_argument('--version', type=int, default=7, 
+    parser.add_argument('--version', type=int, default=1, 
                         help='model version')
 
     parser.add_argument("--node", default=4, type=int,
@@ -68,19 +68,19 @@ def get_args(debug):
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
     
-    parser.add_argument('--epochs', default=200, type=int,
-                        help='maximum iteration')
+    # parser.add_argument('--epochs', default=200, type=int,
+    #                     help='maximum iteration')
     parser.add_argument('--batch_size', default=64, type=int,
                         help='batch size')
-    parser.add_argument('--lr', default=0.001, type=float,
-                        help='learning rate')
+    # parser.add_argument('--lr', default=0.001, type=float,
+    #                     help='learning rate')
     
-    parser.add_argument('--beta', default=0.1, type=float,
-                        help='observation noise')
-    parser.add_argument('--lambda', default=0.1, type=float,
-                        help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=0.1, type=float,
-                        help='weight of label alignment loss')
+    # parser.add_argument('--beta', default=0.1, type=float,
+    #                     help='observation noise')
+    # parser.add_argument('--lambda', default=0.1, type=float,
+    #                     help='weight of DAG reconstruction loss')
+    # parser.add_argument('--gamma', default=0.1, type=float,
+    #                     help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
     
@@ -113,8 +113,10 @@ def main():
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
             label = label / label.std(axis=0)
             self.y_data = label.round(2)
+            self.name = ['light', 'angle', 'length', 'position']
 
         def __len__(self): 
             return len(self.x_data)
@@ -125,13 +127,27 @@ def main():
             return x, y
     
     dataset = CustomDataset()
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
-    name = ['light', 'angle', 'length', 'position']
+    """
+    Estimated Causal Adjacency Matrix
+    light -> length
+    light -> position
+    angle -> length
+    angle -> position
+    length -- position
     
-    """Estimated Causal Adjacency Matrix"""
+    Since var(length) < var(position), we set length -> position
+    """
+    # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = 1
+    B[dataset.name.index('light'), dataset.name.index('length')] = 1
+    B[dataset.name.index('light'), dataset.name.index('position')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
+    B[dataset.name.index('length'), dataset.name.index('position')] = 1
+    # B[:2, 2:] = 1
+    # B[2, 3] = 1
     
     """test dataset"""
     class TestCustomDataset(Dataset): 
@@ -146,8 +162,10 @@ def main():
             
             label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
             label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
             label = label / label.std(axis=0)
             self.y_data = label.round(2)
+            self.name = ['light', 'angle', 'length', 'position']
 
         def __len__(self): 
             return len(self.x_data)
@@ -158,16 +176,16 @@ def main():
             return x, y
     
     test_dataset = TestCustomDataset()
-    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=False)
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model:v{}'.format(config["version"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v4:v{}'.format(config["version"]), type='model')
     model_dir = artifact.download()
     model = VAE(B, config, device).to(device)
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/model.pth'))
+        model.load_state_dict(torch.load(model_dir + '/model_v4.pth'))
     else:
-        model.load_state_dict(torch.load(model_dir + '/model.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/model_v4.pth', map_location=torch.device('cpu')))
     
     model.eval()
     
@@ -201,7 +219,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/original_and_recon.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
+    plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
@@ -215,32 +233,46 @@ def main():
         for k, do_value in enumerate(np.linspace(-0.8, 0.8, 9)):
             do_value = round(do_value, 1)
             causal_latent_ = [x.clone() for x in causal_latent]
-            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
+            # causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
             z = model.inverse(causal_latent_)
-            z = torch.cat(z, dim=0).clone().detach()
+            z = torch.cat(z, dim=1).clone().detach()
+            
             for j in range(config["node"]):
                 if j == do_index:
                     continue
                 else:
                     if j == 0:  # root node
-                        z[j, :] = epsilon[:, j]
-                    z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
-            z = torch.split(z, 1, dim=0)
+                        z[:, j] = epsilon[:, j]
+                    z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+            z = torch.split(z, 1, dim=1)
+            
+            # z = torch.cat(z, dim=0).clone().detach()
+            # for j in range(config["node"]):
+            #     if j == do_index:
+            #         continue
+            #     else:
+            #         if j == 0:  # root node
+            #             z[j, :] = epsilon[:, j]
+            #         z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
+            # z = torch.split(z, 1, dim=0)
+            
             z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
             
-            do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+            do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
+            # do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
 
             ax.flatten()[k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
             ax.flatten()[k].axis('off')
             ax.flatten()[k].set_title('x = {}'.format(do_value))
             # ax.flatten()[k].set_title('do({} = {})'.format(name[do_index], do_value))
         
-        plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
-        plt.savefig('{}/do_{}.png'.format(model_dir, name[do_index]), bbox_inches='tight')
-        # plt.show()
+        plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
+        plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
+        plt.show()
         plt.close()
         
-        wandb.log({'do intervention on {}'.format(name[do_index]): wandb.Image(fig)})
+        wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
     
     """for specific example"""
     iter_test = iter(test_dataloader)
@@ -272,31 +304,45 @@ def main():
     # plt.close()
     
     # do-intervention
-    for k, (do_index, do_value) in enumerate([(0, 0.0), (1, 0.6), (2, 0.0), (3, -0.8)]):
+    for k, (do_index, do_value) in enumerate([(0, 0.0), (1, 0.6), (2, -0.8), (3, -0.8)]):
         do_value = round(do_value, 1)
         causal_latent_ = [x.clone() for x in causal_latent]
-        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
+        # causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
         z = model.inverse(causal_latent_)
-        z = torch.cat(z, dim=0).clone().detach()
+        z = torch.cat(z, dim=1).clone().detach()
+        
         for j in range(config["node"]):
             if j == do_index:
                 continue
             else:
                 if j == 0:  # root node
-                    z[j, :] = epsilon[:, j]
-                z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
-        z = torch.split(z, 1, dim=0)
+                    z[:, j] = epsilon[:, j]
+                z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+        z = torch.split(z, 1, dim=1)
+        
+        # z = torch.cat(z, dim=0).clone().detach()
+        # for j in range(config["node"]):
+        #     if j == do_index:
+        #         continue
+        #     else:
+        #         if j == 0:  # root node
+        #             z[j, :] = epsilon[:, j]
+        #         z[j, :] = torch.matmul(model.B[:j, j].t(), z[:j, :]) + epsilon[:, j]
+        # z = torch.split(z, 1, dim=0)
+        
         z = list(map(lambda x, layer: torch.tanh(layer(x)), z, model.flows))
         
-        do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+        do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
+        # do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
 
         ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
         ax.flatten()[k+2].axis('off')
-        ax.flatten()[k+2].set_title('do({} = {})'.format(name[do_index], do_value))
+        ax.flatten()[k+2].set_title('do({} = {})'.format(test_dataset.name[do_index], do_value))
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('{}/intervention_result.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
+    plt.show()
     plt.close()
     
     wandb.log({'do intervention': wandb.Image(fig)})

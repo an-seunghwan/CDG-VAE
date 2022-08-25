@@ -56,7 +56,7 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     
-    parser.add_argument('--version', type=int, default=7, 
+    parser.add_argument('--version', type=int, default=53, 
                         help='model version')
 
     parser.add_argument("--node", default=4, type=int,
@@ -64,19 +64,19 @@ def get_args(debug):
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
     
-    parser.add_argument('--epochs', default=200, type=int,
-                        help='maximum iteration')
+    # parser.add_argument('--epochs', default=200, type=int,
+    #                     help='maximum iteration')
     parser.add_argument('--batch_size', default=64, type=int,
                         help='batch size')
-    parser.add_argument('--lr', default=0.001, type=float,
-                        help='learning rate')
+    # parser.add_argument('--lr', default=0.001, type=float,
+    #                     help='learning rate')
     
-    parser.add_argument('--beta', default=0.1, type=float,
-                        help='observation noise')
-    parser.add_argument('--lambda', default=0.1, type=float,
-                        help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=0.1, type=float,
-                        help='weight of label alignment loss')
+    # parser.add_argument('--beta', default=0.1, type=float,
+    #                     help='observation noise')
+    # parser.add_argument('--lambda', default=0.1, type=float,
+    #                     help='weight of DAG reconstruction loss')
+    # parser.add_argument('--gamma', default=0.1, type=float,
+    #                     help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
     
@@ -86,7 +86,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -109,8 +109,10 @@ def main():
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
             label = label / label.std(axis=0)
             self.y_data = label.round(2)
+            self.name = ['light', 'angle', 'length', 'position']
 
         def __len__(self): 
             return len(self.x_data)
@@ -121,13 +123,27 @@ def main():
             return x, y
     
     dataset = CustomDataset()
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
-    name = ['light', 'angle', 'length', 'position']
+    """
+    Estimated Causal Adjacency Matrix
+    light -> length
+    light -> position
+    angle -> length
+    angle -> position
+    length -- position
     
-    """Estimated Causal Adjacency Matrix"""
+    Since var(length) < var(position), we set length -> position
+    """
+    # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = 1
+    B[dataset.name.index('light'), dataset.name.index('length')] = 1
+    B[dataset.name.index('light'), dataset.name.index('position')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
+    B[dataset.name.index('length'), dataset.name.index('position')] = 1
+    # B[:2, 2:] = 1
+    # B[2, 3] = 1
     
     """test dataset"""
     class TestCustomDataset(Dataset): 
@@ -142,8 +158,10 @@ def main():
             
             label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
             label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
             label = label / label.std(axis=0)
             self.y_data = label.round(2)
+            self.name = ['light', 'angle', 'length', 'position']
 
         def __len__(self): 
             return len(self.x_data)
@@ -197,7 +215,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/original_and_recon.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
+    plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
@@ -228,12 +246,12 @@ def main():
             ax.flatten()[k].set_title('x = {}'.format(do_value))
             # ax.flatten()[k].set_title('do({} = {})'.format(name[do_index], do_value))
         
-        plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
-        plt.savefig('{}/do_{}.png'.format(model_dir, name[do_index]), bbox_inches='tight')
-        # plt.show()
+        plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
+        plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
+        plt.show()
         plt.close()
         
-        wandb.log({'do intervention on {}'.format(name[do_index]): wandb.Image(fig)})
+        wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
     
     """for specific example"""
     iter_test = iter(test_dataloader)
@@ -265,7 +283,7 @@ def main():
     # plt.close()
     
     # do-intervention
-    for k, (do_index, do_value) in enumerate([(0, 0.8), (1, -0.5), (2, -0.9), (3, 0.3)]):
+    for k, (do_index, do_value) in enumerate([(0, -0.8), (1, 0), (2, -0.9), (3, 0.3)]):
         do_value = round(do_value, 1)
         do_value_ = torch.atanh(torch.tensor(do_value, dtype=torch.float32))
         
@@ -282,11 +300,11 @@ def main():
 
         ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
         ax.flatten()[k+2].axis('off')
-        ax.flatten()[k+2].set_title('do({} = {})'.format(name[do_index], do_value))
+        ax.flatten()[k+2].set_title('do({} = {})'.format(test_dataset.name[do_index], do_value))
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('{}/intervention_result.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
+    plt.show()
     plt.close()
     
     wandb.log({'do intervention': wandb.Image(fig)})
