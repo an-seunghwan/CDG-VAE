@@ -7,8 +7,6 @@ metric:
 parameters:
   # seed:
   #   values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-  # flow_num:
-  #   values: [4]
   # node_dim:
   #   values: [1]
   beta:
@@ -16,4 +14,6 @@ parameters:
   lambda:
     values: [0.1, 1, 10]
   gamma:
-    values: [0.1, 1, 10]
+    values: [1, 10]
+  flow_num:
+    values: [4, 8, 12]
