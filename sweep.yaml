@@ -16,4 +16,4 @@ parameters:
   gamma:
     values: [1, 10]
   flow_num:
-    values: [4, 8, 12]
+    values: [4, 6, 8]
