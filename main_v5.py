@@ -74,9 +74,9 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=0.1, type=float,
+    parser.add_argument('--lambda', default=1, type=float,
                         help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=0.1, type=float,
+    parser.add_argument('--gamma', default=1, type=float,
                         help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
