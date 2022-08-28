@@ -63,7 +63,7 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=8, type=int,
+    parser.add_argument("--flow_num", default=4, type=int,
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
@@ -90,7 +90,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -128,7 +128,7 @@ def main():
     
     dataset = CustomDataset()
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
-    
+
     """
     Estimated Causal Adjacency Matrix
     light -> length
@@ -225,7 +225,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/original_and_recon.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
@@ -275,7 +275,7 @@ def main():
         
         plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
         plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
-        plt.show()
+        # plt.show()
         plt.close()
         
         wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
@@ -348,7 +348,7 @@ def main():
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('{}/intervention_result.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'do intervention': wandb.Image(fig)})
