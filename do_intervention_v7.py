@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=0, 
+    parser.add_argument('--version', type=int, default=3, 
                         help='model version')
 
     if debug:
@@ -107,7 +107,7 @@ def main():
             return x, y
     
     dataset = CustomDataset()
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
 
     """test dataset"""
     class TestCustomDataset(Dataset): 
@@ -179,9 +179,9 @@ def main():
         if config["cuda"]:
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
-    
-        mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
-        causal_latents.append(torch.cat(causal_latent, dim=1))
+            
+        mean, logvar, latent_orig, causal_latent = model.encode(x_batch, withnoise=False)
+        causal_latents.append(causal_latent)
     causal_latents = torch.cat(causal_latents, dim=0)
     # causal_min = np.quantile(causal_latents.detach().numpy(), q=0.25, axis=0)
     # causal_max = np.quantile(causal_latents.detach().numpy(), q=0.75, axis=0)
@@ -198,7 +198,8 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+    mean, logvar, latent_orig, causal_latent = model.encode(x_batch, withnoise=False)
+    xhat = model.decode(causal_latent)
     
     # using only mean
     epsilon = mean
@@ -231,8 +232,8 @@ def main():
         
         for k, do_value in enumerate(np.linspace(min, max, 9)):
             do_value = round(do_value, 1)
-            causal_latent_ = [x.clone() for x in causal_latent]
-            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+            causal_latent_ = causal_latent.clone()
+            causal_latent_[:, do_index] = torch.tensor([do_value], dtype=torch.float32)
             z = model.inverse(causal_latent_)
             z = torch.cat(z, dim=1).clone().detach()
             for j in range(config["node"]):
@@ -269,7 +270,8 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+    mean, logvar, latent_orig, causal_latent = model.encode(x_batch)
+    xhat = model.decode(causal_latent)
     
     # using only mean
     epsilon = mean
@@ -291,8 +293,8 @@ def main():
     # do-intervention
     for k, (do_index, do_value) in enumerate(zip(range(config["node"]), causal_max)):
         do_value = round(do_value, 1)
-        causal_latent_ = [x.clone() for x in causal_latent]
-        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
+        causal_latent_ = causal_latent.clone()
+        causal_latent_[:, do_index] = torch.tensor([do_value], dtype=torch.float32)
         z = model.inverse(causal_latent_)
         z = torch.cat(z, dim=1).clone().detach()
         for j in range(config["node"]):
