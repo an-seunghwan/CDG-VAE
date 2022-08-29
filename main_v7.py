@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v6 import (
+from utils.model_v7 import (
     VAE,
 )
 
@@ -65,6 +65,11 @@ def get_args(debug):
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
     
+    parser.add_argument("--label_normalization", default=True, type=bool,
+                        help="If True, normalize additional information label data")
+    parser.add_argument("--adjacency_scaling", default=True, type=bool,
+                        help="If True, scaling adjacency matrix with in-degree")
+    
     parser.add_argument('--epochs', default=200, type=int,
                         help='maximum iteration')
     parser.add_argument('--batch_size', default=64, type=int,
@@ -92,7 +97,7 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'DAG_recon': [],
         'KL': [],
-        'align': [],
+        'alignment': [],
     }
     
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
@@ -104,7 +109,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+            mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
             
             loss_ = []
             
@@ -128,8 +133,8 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('DAG_recon', DAG_recon))
             
             """Label Alignment"""
-            align = 0.5 * torch.pow(torch.cat(causal_latent, dim=1) - y_batch, 2).sum(axis=1).mean()
-            loss_.append(('align', align))
+            align = 0.5 * torch.pow(torch.cat(align_latent, dim=1) - y_batch, 2).sum(axis=1).mean()
+            loss_.append(('alignment', align))
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * DAG_recon
@@ -158,7 +163,7 @@ def main():
 
     """dataset"""
     class CustomDataset(Dataset): 
-        def __init__(self):
+        def __init__(self, config):
             train_imgs = os.listdir('./utils/causal_data/pendulum/train')
             train_x = []
             for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
@@ -170,7 +175,8 @@ def main():
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
             self.std = label.std(axis=0)
-            label = label / label.std(axis=0)
+            if config["label_normalization"]:
+                label = label / label.std(axis=0)
             self.y_data = label.round(2)
             self.name = ['light', 'angle', 'length', 'position']
 
@@ -182,7 +188,7 @@ def main():
             y = torch.FloatTensor(self.y_data[idx])
             return x, y
     
-    dataset = CustomDataset()
+    dataset = CustomDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """
@@ -203,8 +209,12 @@ def main():
     B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
     B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
     B[dataset.name.index('length'), dataset.name.index('position')] = B_value
-    # B[:2, 2:] = 1
-    # B[2, 3] = 1
+    
+    """adjacency matrix scaling"""
+    if config["adjacency_scaling"]:
+        indegree = B.sum(axis=0)
+        mask = (indegree != 0)
+        B[:, mask] = B[:, mask] / indegree[mask]
     
     model = VAE(B, config, device)
     model.to(device)
@@ -247,15 +257,15 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
 
     """model save"""
-    torch.save(model.state_dict(), './assets/model_v6.pth')
-    artifact = wandb.Artifact('model_v6', 
+    torch.save(model.state_dict(), './assets/model_v7.pth')
+    artifact = wandb.Artifact('model_v7', 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_v6.pth')
+    artifact.add_file('./assets/model_v7.pth')
     wandb.log_artifact(artifact)
     
     # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v6:v{}'.format(0), type='model')
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v7:v{}'.format(0), type='model')
     # artifact.metadata
     
     wandb.run.finish()

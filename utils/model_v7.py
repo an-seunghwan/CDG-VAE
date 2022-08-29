@@ -89,6 +89,10 @@ class VAE(nn.Module):
             nn.Linear(3, config["node_dim"])
             ).to(device) for _ in range(config["node"])]
         
+        """Align"""
+        self.align = [nn.Linear(config["node_dim"], 1).to(device) 
+                      for _ in range(config["node"])]
+        
         self.I = torch.eye(config["node"]).to(device)
 
     def inverse(self, input):
@@ -108,7 +112,7 @@ class VAE(nn.Module):
         latent_orig = latent.clone()
         latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         causal_latent = list(map(lambda x, layer: layer(x), latent, self.flows))
-
+        
         xhat = self.decoder(torch.cat(causal_latent, dim=1))
         xhat = xhat.view(-1, 96, 96, 3)
 
@@ -116,7 +120,10 @@ class VAE(nn.Module):
         prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label, 1, dim=1), self.prior))
         prior_logvar = torch.cat(prior_logvar, dim=1)
         
-        return mean, logvar, prior_logvar, latent_orig, causal_latent, xhat
+        """Alignment"""
+        align_latent = list(map(lambda x, layer: layer(x), causal_latent, self.align))
+        
+        return mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat
 #%%
 def main():
     config = {
@@ -135,7 +142,7 @@ def main():
         
     batch = torch.rand(config["n"], 96, 96, 3)
     u = torch.rand(config["n"], config["node"])
-    mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([batch, u])
+    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([batch, u])
     
     assert mean.shape == (config["n"], config["node"] * config["node_dim"])
     assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
@@ -143,11 +150,13 @@ def main():
     assert latent_orig.shape == (config["n"], config["node_dim"], config["node"])
     assert causal_latent[0].shape == (config["n"], config["node_dim"])
     assert len(causal_latent) == config["node"]
+    assert align_latent[0].shape == (config["n"], config["node_dim"])
+    assert len(align_latent) == config["node"]
     assert xhat.shape == (config["n"], 96, 96, 3)
     
     inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(latent_orig, 1, dim=2)], 
                                                         model.inverse(causal_latent))]).sum())
-    assert inverse_diff / (config["n"] * config["node"] * config["node_dim"])  < 1e-5
+    assert inverse_diff / (config["n"] * config["node"] * config["node_dim"]) < 1e-5
     
     print("Model test pass!")
 #%%
