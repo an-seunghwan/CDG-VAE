@@ -11,13 +11,13 @@ parameters:
   #   values: [1]
   # beta:
   #   values: [0.1, 1, 10]
-  # lambda:
-  #   values: [1, 10]
-  # gamma:
-  #   values: [1, 10]
-  # flow_num:
-  #   values: [4, 8]
-  label_normalization:
-    values: [False, True]
-  adjacency_scaling:
-    values: [True, False]
+  flow_num:
+    values: [4]
+  lambda:
+    values: [1, 3, 5]
+  gamma:
+    values: [1, 3, 5]
+  # label_normalization:
+  #   values: [False, True]
+  # adjacency_scaling:
+  #   values: [True, False]
