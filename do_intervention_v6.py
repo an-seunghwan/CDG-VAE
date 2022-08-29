@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v5 import (
+from utils.model_v6 import (
     VAE,
 )
 
@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=1, 
+    parser.add_argument('--version', type=int, default=6, 
                         help='model version')
 
     if debug:
@@ -166,7 +166,23 @@ def main():
     
     model.eval()
     
-    """intervention"""
+    """get intervention range"""
+    causal_latents = []
+    iter_test = iter(test_dataloader)
+    for x_batch, y_batch in tqdm.tqdm(iter_test):
+        if config["cuda"]:
+            x_batch = x_batch.cuda()
+            y_batch = y_batch.cuda()
+    
+        mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+        causal_latents.append(torch.cat(causal_latent, dim=1))
+    causal_latents = torch.cat(causal_latents, dim=0)
+    # causal_min = np.quantile(causal_latents.detach().numpy(), q=0.25, axis=0)
+    # causal_max = np.quantile(causal_latents.detach().numpy(), q=0.75, axis=0)
+    causal_min = torch.min(causal_latents, axis=0).values.detach().numpy()
+    causal_max = torch.max(causal_latents, axis=0).values.detach().numpy()
+    
+    """reconstruction"""
     iter_test = iter(test_dataloader)
     count = 1
     for _ in range(count):
@@ -177,7 +193,6 @@ def main():
     
     mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
     
-    """reconstruction with do-intervention"""
     # using only mean
     epsilon = mean
     # noise = torch.randn(1, config["node"] * config["node_dim"]).to(device) 
@@ -196,18 +211,18 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/original_and_recon.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
+    plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     
-    # do-intervention
-    do_index = 0
-    do_value = 0
-    for do_index in range(config["node"]):
+    """reconstruction with do-intervention"""
+    # do_index = 0
+    # do_value = 0
+    for do_index, (min, max) in enumerate(zip(causal_min, causal_max)):
         fig, ax = plt.subplots(3, 3, figsize=(5, 5))
         
-        for k, do_value in enumerate(np.linspace(-0.8, 0.8, 9)):
+        for k, do_value in enumerate(np.linspace(min, max, 9)):
             do_value = round(do_value, 1)
             causal_latent_ = [x.clone() for x in causal_latent]
             causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
@@ -232,7 +247,7 @@ def main():
         
         plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
         plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
-        # plt.show()
+        plt.show()
         plt.close()
         
         wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
@@ -267,7 +282,7 @@ def main():
     # plt.close()
     
     # do-intervention
-    for k, (do_index, do_value) in enumerate([(0, 0.0), (1, 0.6), (2, 0.5), (3, -0.5)]):
+    for k, (do_index, do_value) in enumerate(zip(range(config["node"]), causal_max)):
         do_value = round(do_value, 1)
         causal_latent_ = [x.clone() for x in causal_latent]
         causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
@@ -287,11 +302,11 @@ def main():
 
         ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
         ax.flatten()[k+2].axis('off')
-        ax.flatten()[k+2].set_title('do({} = {})'.format(test_dataset.name[do_index], do_value))
+        ax.flatten()[k+2].set_title('do({} = {:.1f})'.format(test_dataset.name[do_index], do_value))
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('{}/intervention_result.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
+    plt.show()
     plt.close()
     
     wandb.log({'do intervention': wandb.Image(fig)})
