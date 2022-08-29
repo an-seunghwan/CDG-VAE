@@ -12,18 +12,22 @@ class PlanarFlows(nn.Module):
     [2]: https://arxiv.org/pdf/1811.00995.pdf
     """
     def __init__(self,
-                 config,
+                 input_dim,
+                 flow_num,
+                 inverse_loop,
                  device='cpu'):
         super(PlanarFlows, self).__init__()
 
-        self.config = config
+        self.input_dim = input_dim
+        self.flow_num = flow_num
+        self.inverse_loop = inverse_loop
         
-        self.w = [(nn.Parameter(torch.randn(config["node_dim"], 1) * 0.1).to(device))
-                  for _ in range(config["flow_num"])]
+        self.w = [(nn.Parameter(torch.randn(self.input_dim, 1) * 0.1).to(device))
+                  for _ in range(self.flow_num)]
         self.b = [nn.Parameter((torch.randn(1, 1) * 0.1).to(device))
-                  for _ in range(config["flow_num"])]
-        self.u = [nn.Parameter((torch.randn(config["node_dim"], 1) * 0.1).to(device))
-                  for _ in range(config["flow_num"])]
+                  for _ in range(self.flow_num)]
+        self.u = [nn.Parameter((torch.randn(self.input_dim, 1) * 0.1).to(device))
+                  for _ in range(self.flow_num)]
         
     def build_u(self, u_, w_):
         """sufficient condition to be invertible"""
@@ -34,9 +38,9 @@ class PlanarFlows(nn.Module):
     
     def inverse(self, inputs):
         h = inputs
-        for j in reversed(range(self.config["flow_num"])):
+        for j in reversed(range(self.flow_num)):
             z = h
-            for _ in range(self.config["inverse_loop"]):
+            for _ in range(self.inverse_loop):
                 u_ = self.build_u(self.u[j], self.w[j]) 
                 z = h - u_.t() * torch.tanh(z @ self.w[j] + self.b[j])
             h = z
@@ -44,7 +48,7 @@ class PlanarFlows(nn.Module):
             
     def forward(self, inputs):
         h = inputs
-        for j in range(self.config["flow_num"]):
+        for j in range(self.flow_num):
             u_ = self.build_u(self.u[j], self.w[j])
             h = h + u_.t() * torch.tanh(h @ self.w[j] + self.b[j])
         return h
@@ -68,7 +72,8 @@ class VAE(nn.Module):
         self.B = B.to(device) # binary adjacency matrix
         
         """Generalized Linear SEM: Invertible NN"""
-        self.flows = [PlanarFlows(config, device) for _ in range(config["node"])]
+        self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
+                    for _ in range(config["node"])]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -81,23 +86,33 @@ class VAE(nn.Module):
         ).to(device)
         
         """Prior"""
-        self.prior = [nn.Sequential(
-            nn.Linear(1, 3),
-            nn.ELU(),
-            nn.Linear(3, 3),
-            nn.ELU(),
-            nn.Linear(3, config["node_dim"])
-            ).to(device) for _ in range(config["node"])]
+        self.prior = [PlanarFlows(1, config["prior_flow_num"], config["inverse_loop"], device) 
+                    for _ in range(config["node"] * config["node_dim"])]
         
         """Align"""
-        self.align = [nn.Linear(config["node_dim"], 1).to(device) 
-                      for _ in range(config["node"])]
+        self.align = [nn.BatchNorm1d(config["node_dim"]).to(device) for _ in range(config["node"])]
         
         self.I = torch.eye(config["node"]).to(device)
 
     def inverse(self, input):
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
         return inverse_latent
+    
+    def encode(self, input):
+        image = input
+        h = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
+        mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
+        
+        """Latent Generating Process"""
+        noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
+        epsilon = mean + torch.exp(logvar / 2) * noise
+        epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
+        latent = torch.matmul(epsilon, torch.inverse(self.I - self.B)) # [batch, node_dim, node]
+        latent_orig = latent.clone()
+        latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
+        causal_latent = list(map(lambda x, layer: layer(x), latent, self.flows))
+        
+        return mean, logvar, latent_orig, causal_latent
     
     def forward(self, input):
         image, label = input
@@ -117,7 +132,8 @@ class VAE(nn.Module):
         xhat = xhat.view(-1, 96, 96, 3)
 
         """prior"""
-        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label, 1, dim=1), self.prior))
+        label_ = torch.repeat_interleave(label, self.config["node_dim"], dim=1)
+        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label_, 1, dim=1), self.prior))
         prior_logvar = torch.cat(prior_logvar, dim=1)
         
         """Alignment"""
@@ -129,9 +145,10 @@ def main():
     config = {
         "n": 10,
         "node": 4,
-        "node_dim": 1, 
-        "flow_num": 3,
+        "node_dim": 2, 
+        "flow_num": 4,
         "inverse_loop": 100,
+        "prior_flow_num": 8,
     }
     
     B = torch.zeros(config["node"], config["node"])
@@ -166,20 +183,15 @@ if __name__ == '__main__':
 # config = {
 #     "n": 10,
 #     "node": 4,
-#     "node_dim": 2,
-#     "align_dim": 4, 
-#     "flow_num": 3,
+#     "node_dim": 2, 
+#     "flow_num": 4,
 #     "inverse_loop": 100,
 # }
 
+# device = 'cpu'
 # B = torch.zeros(config["node"], config["node"])
 # B[:2, 2:] = 1
-
-# x = torch.randn(config["n"], 96, 96, 3)
-# u = torch.randn(config["n"], config["node"])
-
-# config = config
-# device = 'cpu'
+    
 
 # """encoder"""
 # encoder = nn.Sequential(
@@ -187,13 +199,13 @@ if __name__ == '__main__':
 #     nn.ELU(),
 #     nn.Linear(300, 300),
 #     nn.ELU(),
-#     nn.Linear(300, config["node"] * config["node_dim"]),
+#     nn.Linear(300, config["node"] * config["node_dim"] * 2),
 # ).to(device)
 
-# B = B.to(device) # weighted adjacency matrix
-# # batchnorm = nn.BatchNorm1d(config["node"] * config["embedding_dim"]).to(device)
+# B = B.to(device) # binary adjacency matrix
 
-# flows = [PlanarFlows(config, device)
+# """Generalized Linear SEM: Invertible NN"""
+# flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
 #          for _ in range(config["node"])]
 
 # """decoder"""
@@ -206,39 +218,60 @@ if __name__ == '__main__':
 #     nn.Tanh()
 # ).to(device)
 
-# I = torch.eye(config["node"]).to(device)
+# """Prior"""
+# prior = [PlanarFlows(1, config["flow_num"], config["inverse_loop"], device) 
+#          for _ in range(config["node"] * config["node_dim"])]
+# # prior = [nn.Sequential(
+# #     nn.Linear(1, 3),
+# #     nn.ELU(),
+# #     nn.Linear(3, 3),
+# #     nn.ELU(),
+# #     nn.Linear(3, config["node_dim"])
+# #     ).to(device) for _ in range(config["node"])]
 
-# """alignment net"""
-# alignnet = [nn.Sequential(
-#     nn.Linear(1, config["align_dim"]),
-#     nn.Tanh(),
-#     nn.Linear(config["align_dim"], 1),).to(device) 
-#     for _ in range(config["node"])]
+# """Align"""
+# align = [nn.BatchNorm1d(config["node_dim"]).to(device) for _ in range(config["node"])]
+
+# I = torch.eye(config["node"]).to(device)
 # #%%
-# logvar = encoder(nn.Flatten()(x)) # [batch, node*embedding_dim]
+# w = [(nn.Parameter(torch.randn(config["node_dim"], 1) * 0.1).to(device))
+#             for _ in range(config["flow_num"])]
+# b = [nn.Parameter((torch.randn(1, 1) * 0.1).to(device))
+#             for _ in range(config["flow_num"])]
+# u = [nn.Parameter((torch.randn(config["node_dim"], 1) * 0.1).to(device))
+#             for _ in range(config["flow_num"])]
+
+# def build_u(u_, w_):
+#     """sufficient condition to be invertible"""
+#     term1 = -1 + torch.log(1 + torch.exp(w_.t() @ u_))
+#     term2 = w_.t() @ u_
+#     u_hat = u_ + (term1 - term2) * (w_ / torch.norm(w_, p=2) ** 2)
+#     return u_hat
+# #%%
+# image = torch.randn(10, 96, 96, 3)
+# u = torch.randn(10, config["node"])
+
+# h = encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
+# mean, logvar = torch.split(h, config["node"] * config["node_dim"], dim=1)
 
 # """Latent Generating Process"""
-# epsilon = torch.exp(logvar / 2) * torch.randn(x.size(0), config["node"] * config["node_dim"])
+# noise = torch.randn(image.size(0), config["node"] * config["node_dim"]).to(device) 
+# epsilon = mean + torch.exp(logvar / 2) * noise
 # epsilon = epsilon.view(-1, config["node_dim"], config["node"]).contiguous()
-
-# latent = torch.matmul(epsilon, torch.inverse(I - B))
+# latent = torch.matmul(epsilon, torch.inverse(I - B)) # [batch, node_dim, node]
 # latent_orig = latent.clone()
-# latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)]
+# latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
 
-# causal_latent = list(map(lambda x, layer: torch.tanh(layer(x)), latent, flows))
+# causal_latent = list(map(lambda x, layer: layer(x), latent, flows))
 
 # xhat = decoder(torch.cat(causal_latent, dim=1))
 # xhat = xhat.view(-1, 96, 96, 3)
 
 # """prior"""
-# prior_logvar = list(map(lambda x, layer: layer(x), torch.split(u, 1, dim=1), alignnet))
+# u = torch.repeat_interleave(u, 2, dim=1)
+# prior_logvar = list(map(lambda x, layer: layer(x), torch.split(u, 1, dim=1), prior))
 # prior_logvar = torch.cat(prior_logvar, dim=1)
 
-# # inverse_latent = list(map(lambda x, layer: layer.inverse(torch.atanh(x)), causal_latent, flows))
-# # [x - y for x, y in zip(inverse_latent, latent)]
-# #%%
-# # causal_latent = []
-# # for j in range(config["node"]):
-# #     u_ = build_u(u[j], w[j])
-# #     causal_latent.append(latent[j] + u_.t() * torch.tanh(latent[j] @ w[j] + b[j]))
+# """Alignment"""
+# align_latent = list(map(lambda x, layer: layer(x), causal_latent, align))
 #%%

@@ -64,10 +64,12 @@ def get_args(debug):
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
+    parser.add_argument("--prior_flow_num", default=8, type=int,
+                        help="the number of invertible NN (planar flow) in prior distribution")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
-    parser.add_argument("--adjacency_scaling", default=True, type=bool,
+    parser.add_argument("--adjacency_scaling", default=False, type=bool,
                         help="If True, scaling adjacency matrix with in-degree")
     
     parser.add_argument('--epochs', default=200, type=int,
