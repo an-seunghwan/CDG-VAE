@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v6 import (
+from utils.model_v7 import (
     VAE,
 )
 
@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=6, 
+    parser.add_argument('--version', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -65,7 +65,7 @@ def main():
     config = vars(get_args(debug=True)) # default configuration
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v6:v{}'.format(config["version"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v7:v{}'.format(config["version"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     model_dir = artifact.download()
@@ -93,7 +93,8 @@ def main():
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
             self.std = label.std(axis=0)
-            label = label / label.std(axis=0)
+            if config["label_normalization"]:
+                label = label / label.std(axis=0)
             self.y_data = label.round(2)
             self.name = ['light', 'angle', 'length', 'position']
 
@@ -122,7 +123,8 @@ def main():
             label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
             label = label - label.mean(axis=0)
             self.std = label.std(axis=0)
-            label = label / label.std(axis=0)
+            if config["label_normalization"]:
+                label = label / label.std(axis=0)
             self.y_data = label.round(2)
             self.name = ['light', 'angle', 'length', 'position']
 
@@ -155,14 +157,18 @@ def main():
     B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
     B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
     B[dataset.name.index('length'), dataset.name.index('position')] = B_value
-    # B[:2, 2:] = 1
-    # B[2, 3] = 1
+    
+    """adjacency matrix scaling"""
+    if config["adjacency_scaling"]:
+        indegree = B.sum(axis=0)
+        mask = (indegree != 0)
+        B[:, mask] = B[:, mask] / indegree[mask]
     
     model = VAE(B, config, device).to(device)
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/model_v6.pth'))
+        model.load_state_dict(torch.load(model_dir + '/model_v7.pth'))
     else:
-        model.load_state_dict(torch.load(model_dir + '/model_v6.pth', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/model_v7.pth', map_location=torch.device('cpu')))
     
     model.eval()
     
@@ -174,7 +180,7 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
     
-        mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+        mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
         causal_latents.append(torch.cat(causal_latent, dim=1))
     causal_latents = torch.cat(causal_latents, dim=0)
     # causal_min = np.quantile(causal_latents.detach().numpy(), q=0.25, axis=0)
@@ -183,6 +189,7 @@ def main():
     causal_max = torch.max(causal_latents, axis=0).values.detach().numpy()
     
     """reconstruction"""
+    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     iter_test = iter(test_dataloader)
     count = 1
     for _ in range(count):
@@ -191,7 +198,7 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
     
     # using only mean
     epsilon = mean
@@ -225,7 +232,7 @@ def main():
         for k, do_value in enumerate(np.linspace(min, max, 9)):
             do_value = round(do_value, 1)
             causal_latent_ = [x.clone() for x in causal_latent]
-            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
+            causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
             z = model.inverse(causal_latent_)
             z = torch.cat(z, dim=1).clone().detach()
             for j in range(config["node"]):
@@ -238,7 +245,7 @@ def main():
             z = torch.split(z, 1, dim=1)
             z = list(map(lambda x, layer: layer(x), z, model.flows))
             
-            do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
+            do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
 
             ax.flatten()[k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
             ax.flatten()[k].axis('off')
@@ -262,7 +269,7 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
+    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
     
     # using only mean
     epsilon = mean
@@ -285,7 +292,7 @@ def main():
     for k, (do_index, do_value) in enumerate(zip(range(config["node"]), causal_max)):
         do_value = round(do_value, 1)
         causal_latent_ = [x.clone() for x in causal_latent]
-        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]] * config["batch_size"], dtype=torch.float32)
+        causal_latent_[do_index] = torch.tensor([[do_value] * config["node_dim"]], dtype=torch.float32)
         z = model.inverse(causal_latent_)
         z = torch.cat(z, dim=1).clone().detach()
         for j in range(config["node"]):
@@ -298,7 +305,7 @@ def main():
         z = torch.split(z, 1, dim=1)
         z = list(map(lambda x, layer: layer(x), z, model.flows))
         
-        do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["batch_size"], 96, 96, 3)[0]
+        do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
 
         ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
         ax.flatten()[k+2].axis('off')
