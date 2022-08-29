@@ -86,33 +86,42 @@ class VAE(nn.Module):
         ).to(device)
         
         """Prior"""
-        self.prior = [PlanarFlows(1, config["prior_flow_num"], config["inverse_loop"], device) 
-                    for _ in range(config["node"] * config["node_dim"])]
+        self.prior = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
+                    for _ in range(config["node"])]
         
-        """Align"""
-        self.align = [nn.BatchNorm1d(config["node_dim"]).to(device) for _ in range(config["node"])]
+        # """Align"""
+        # self.align = [nn.BatchNorm1d(config["node_dim"]).to(device) for _ in range(config["node"])]
         
         self.I = torch.eye(config["node"]).to(device)
 
     def inverse(self, input):
+        input = torch.split(input, self.config["node_dim"], dim=1)
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
         return inverse_latent
     
-    def encode(self, input):
+    def encode(self, input, withnoise=True):
         image = input
         h = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
         mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
         
-        """Latent Generating Process"""
-        noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
-        epsilon = mean + torch.exp(logvar / 2) * noise
-        epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
+        if withnoise:
+            noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
+            epsilon = mean + torch.exp(logvar / 2) * noise
+            epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
+        else:
+            epsilon = mean
+            epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         latent = torch.matmul(epsilon, torch.inverse(self.I - self.B)) # [batch, node_dim, node]
         latent_orig = latent.clone()
         latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         causal_latent = list(map(lambda x, layer: layer(x), latent, self.flows))
+        causal_latent = torch.cat(causal_latent, dim=1)
         
         return mean, logvar, latent_orig, causal_latent
+    
+    def decode(self, input):
+        xhat = self.decoder(input).view(-1, 96, 96, 3)
+        return xhat
     
     def forward(self, input):
         image, label = input
@@ -127,19 +136,21 @@ class VAE(nn.Module):
         latent_orig = latent.clone()
         latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         causal_latent = list(map(lambda x, layer: layer(x), latent, self.flows))
+        causal_latent = torch.cat(causal_latent, dim=1)
         
-        xhat = self.decoder(torch.cat(causal_latent, dim=1))
+        xhat = self.decoder(causal_latent)
         xhat = xhat.view(-1, 96, 96, 3)
-
+        
         """prior"""
         label_ = torch.repeat_interleave(label, self.config["node_dim"], dim=1)
-        prior_logvar = list(map(lambda x, layer: layer(x), torch.split(label_, 1, dim=1), self.prior))
-        prior_logvar = torch.cat(prior_logvar, dim=1)
+        prior_logvar = list(map(lambda x, layer: torch.transpose(layer(x).unsqueeze(dim=1), 1, 2), 
+                        torch.split(label_, self.config["node_dim"], dim=1), self.prior))
+        prior_logvar = torch.cat(prior_logvar, dim=2).view(-1, self.config["node_dim"] * self.config["node"]).contiguous()
         
-        """Alignment"""
-        align_latent = list(map(lambda x, layer: layer(x), causal_latent, self.align))
+        # """Alignment"""
+        # align_latent = list(map(lambda x, layer: layer(x), causal_latent, self.align))
         
-        return mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat
+        return mean, logvar, prior_logvar, latent_orig, causal_latent, xhat
 #%%
 def main():
     config = {
@@ -159,16 +170,15 @@ def main():
         
     batch = torch.rand(config["n"], 96, 96, 3)
     u = torch.rand(config["n"], config["node"])
-    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([batch, u])
+    mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([batch, u])
     
     assert mean.shape == (config["n"], config["node"] * config["node_dim"])
     assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert prior_logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert latent_orig.shape == (config["n"], config["node_dim"], config["node"])
-    assert causal_latent[0].shape == (config["n"], config["node_dim"])
-    assert len(causal_latent) == config["node"]
-    assert align_latent[0].shape == (config["n"], config["node_dim"])
-    assert len(align_latent) == config["node"]
+    assert causal_latent.shape == (config["n"], config["node_dim"] * config["node"])
+    # assert align_latent[0].shape == (config["n"], config["node_dim"])
+    # assert len(align_latent) == config["node"]
     assert xhat.shape == (config["n"], 96, 96, 3)
     
     inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(latent_orig, 1, dim=2)], 
@@ -186,6 +196,7 @@ if __name__ == '__main__':
 #     "node_dim": 2, 
 #     "flow_num": 4,
 #     "inverse_loop": 100,
+#     "prior_flow_num": 8,
 # }
 
 # device = 'cpu'
@@ -219,18 +230,11 @@ if __name__ == '__main__':
 # ).to(device)
 
 # """Prior"""
-# prior = [PlanarFlows(1, config["flow_num"], config["inverse_loop"], device) 
-#          for _ in range(config["node"] * config["node_dim"])]
-# # prior = [nn.Sequential(
-# #     nn.Linear(1, 3),
-# #     nn.ELU(),
-# #     nn.Linear(3, 3),
-# #     nn.ELU(),
-# #     nn.Linear(3, config["node_dim"])
-# #     ).to(device) for _ in range(config["node"])]
+# prior = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
+#          for _ in range(config["node"])]
 
-# """Align"""
-# align = [nn.BatchNorm1d(config["node_dim"]).to(device) for _ in range(config["node"])]
+# # """Align"""
+# # align = [nn.BatchNorm1d(config["node_dim"]).to(device) for _ in range(config["node"])]
 
 # I = torch.eye(config["node"]).to(device)
 # #%%
@@ -261,17 +265,18 @@ if __name__ == '__main__':
 # latent = torch.matmul(epsilon, torch.inverse(I - B)) # [batch, node_dim, node]
 # latent_orig = latent.clone()
 # latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
-
 # causal_latent = list(map(lambda x, layer: layer(x), latent, flows))
+# causal_latent = torch.cat(causal_latent, dim=1)
 
-# xhat = decoder(torch.cat(causal_latent, dim=1))
+# xhat = decoder(causal_latent)
 # xhat = xhat.view(-1, 96, 96, 3)
 
 # """prior"""
 # u = torch.repeat_interleave(u, 2, dim=1)
-# prior_logvar = list(map(lambda x, layer: layer(x), torch.split(u, 1, dim=1), prior))
-# prior_logvar = torch.cat(prior_logvar, dim=1)
+# prior_logvar = list(map(lambda x, layer: torch.transpose(layer(x).unsqueeze(dim=1), 1, 2), 
+#                         torch.split(u, config["node_dim"], dim=1), prior))
+# prior_logvar = torch.cat(prior_logvar, dim=2).view(-1, config["node_dim"] * config["node"]).contiguous()
 
-# """Alignment"""
-# align_latent = list(map(lambda x, layer: layer(x), causal_latent, align))
+# # """Alignment"""
+# # align_latent = list(map(lambda x, layer: layer(x), causal_latent, align))
 #%%

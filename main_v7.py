@@ -64,12 +64,12 @@ def get_args(debug):
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
-    parser.add_argument("--prior_flow_num", default=8, type=int,
+    parser.add_argument("--prior_flow_num", default=4, type=int,
                         help="the number of invertible NN (planar flow) in prior distribution")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
-    parser.add_argument("--adjacency_scaling", default=False, type=bool,
+    parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scaling adjacency matrix with in-degree")
     
     parser.add_argument('--epochs', default=200, type=int,
@@ -81,9 +81,9 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=1, type=float,
+    parser.add_argument('--lambda', default=3, type=float,
                         help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=1, type=float,
+    parser.add_argument('--gamma', default=3, type=float,
                         help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -111,7 +111,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+            mean, logvar, prior_logvar, latent_orig, causal_latent, xhat = model([x_batch, y_batch])
             
             loss_ = []
             
@@ -135,7 +135,7 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('DAG_recon', DAG_recon))
             
             """Label Alignment"""
-            align = 0.5 * torch.pow(torch.cat(align_latent, dim=1) - y_batch, 2).sum(axis=1).mean()
+            align = 0.5 * torch.pow(causal_latent - y_batch, 2).sum(axis=1).mean()
             loss_.append(('alignment', align))
             
             loss = recon + config["beta"] * KL 
