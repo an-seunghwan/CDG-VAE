@@ -69,10 +69,15 @@ class VAE(nn.Module):
             nn.Linear(300, config["node"] * config["node_dim"] * 2),
         ).to(device)
         
-        self.B = B.to(device) # binary adjacency matrix
+        """Causal Adjacency Matrix"""
+        self.B = B.to(device) 
         self.I = torch.eye(config["node"]).to(device)
         self.I_B_inv = torch.inverse(self.I - self.B)
-        self.scaling = self.I_B_inv.sum(axis=0)
+        
+        """Running Statistics"""
+        self.momentum = 0.9
+        self.running_mean = [torch.zeros(config["node_dim"], ).to(device) for _ in range(config["node"])]
+        self.running_std = [torch.ones(config["node_dim"], ).to(device) for _ in range(config["node"])]
         
         """Generalized Linear SEM: Invertible NN"""
         self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
@@ -92,38 +97,12 @@ class VAE(nn.Module):
         self.prior = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
                     for _ in range(config["node"])]
         
-    def inverse(self, input):
-        input = torch.split(input, self.config["node_dim"], dim=1)
-        inverse_latent = list(map(lambda x, layer, s: layer.inverse(torch.atanh(x) * s), input, self.flows, self.scaling))
+    def inverse(self, input): # when input is computed with running=False
+        inverse_latent = list(map(lambda x, layer: layer.inverse(torch.atanh(x)), input, self.flows))
+        inverse_latent = [x * s + m for x, m, s in zip(inverse_latent, self.running_mean, self.running_std)]
         return inverse_latent
     
-    def encode(self, input, withnoise=True):
-        image = input
-        h = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
-        mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
-        
-        if withnoise:
-            noise = torch.randn(image.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
-            epsilon = mean + torch.exp(logvar / 2) * noise
-            epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
-        else:
-            epsilon = mean
-            epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
-        latent = torch.matmul(epsilon, self.I_B_inv) # [batch, node_dim, node]
-        latent_orig = latent.clone()
-        latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
-        
-        # scaling
-        align_latent = list(map(lambda x, layer, s: layer(x) / s, latent, self.flows, self.scaling))
-        causal_latent = torch.cat([torch.tanh(x) for x in align_latent], dim=1)
-        
-        return mean, logvar, latent_orig, causal_latent
-    
-    def decode(self, input):
-        xhat = self.decoder(input).view(-1, 96, 96, 3)
-        return xhat
-    
-    def forward(self, input):
+    def forward(self, input, running=True):
         image, label = input
         h = self.encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
         mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
@@ -133,14 +112,30 @@ class VAE(nn.Module):
         epsilon = mean + torch.exp(logvar / 2) * noise
         epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         latent = torch.matmul(epsilon, self.I_B_inv) # [batch, node_dim, node]
-        latent_orig = latent.clone()
+        orig_latent = latent.clone()
         latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         
-        # scaling
-        align_latent = list(map(lambda x, layer, s: layer(x) / s, latent, self.flows, self.scaling))
-        causal_latent = torch.cat([torch.tanh(x) for x in align_latent], dim=1)
+        """Scaling"""
+        stat_mean = [x.mean(axis=0) for x in latent]
+        stat_std = [x.std(axis=0) for x in latent]
+        if running:
+            latent = [(x - m) / s for x, m, s in zip(latent, stat_mean, stat_std)]
+            # update
+            self.running_mean = [self.momentum * m1 + (1 - self.momentum) * m2.detach()
+                                 for m1, m2 in zip(self.running_mean, stat_mean)]
+            self.running_std = [self.momentum * s1 + (1 - self.momentum) * s2.detach()
+                                 for s1, s2 in zip(self.running_std, stat_std)]
+        else:
+            latent = [(x - m) / s for x, m, s in zip(latent, self.running_mean, self.running_std)]
+        scaled_latent = [x.clone() for x in latent] # [batch, node_dim] x node
         
-        xhat = self.decoder(causal_latent)
+        """Alignment"""
+        align_latent = list(map(lambda x, layer: layer(x), latent, self.flows)) # [batch, node_dim] x node
+        
+        """Causal"""
+        causal_latent = [torch.tanh(x) for x in align_latent] # [batch, node_dim] x node
+        
+        xhat = self.decoder(torch.cat(causal_latent, dim=1))
         xhat = xhat.view(-1, 96, 96, 3)
         
         """prior"""
@@ -149,11 +144,11 @@ class VAE(nn.Module):
                         torch.split(label_, self.config["node_dim"], dim=1), self.prior))
         prior_logvar = torch.cat(prior_logvar, dim=2).view(-1, self.config["node_dim"] * self.config["node"]).contiguous()
         
-        return mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat
+        return mean, logvar, prior_logvar, orig_latent, scaled_latent, align_latent, causal_latent, xhat
 #%%
 def main():
     config = {
-        "n": 10,
+        "n": 64,
         "node": 4,
         "node_dim": 2, 
         "flow_num": 4,
@@ -167,20 +162,33 @@ def main():
     for x in model.parameters():
         print(x.shape)
         
+    print()
     batch = torch.rand(config["n"], 96, 96, 3)
     u = torch.rand(config["n"], config["node"])
-    mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([batch, u])
+    print('before')
+    print('model.running_mean:', model.running_mean)
+    print('model.running_std:', model.running_std)
+    print()
+    mean, logvar, prior_logvar, orig_latent, scaled_latent, align_latent, causal_latent, xhat = model([batch, u], running=True)
+    print('after')
+    print('model.running_mean:', model.running_mean)
+    print('model.running_std:', model.running_std)
     
     assert mean.shape == (config["n"], config["node"] * config["node_dim"])
     assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert prior_logvar.shape == (config["n"], config["node"] * config["node_dim"])
-    assert latent_orig.shape == (config["n"], config["node_dim"], config["node"])
+    assert orig_latent.shape == (config["n"], config["node_dim"], config["node"])
+    assert scaled_latent[0].shape == (config["n"], config["node_dim"])
+    assert len(scaled_latent) == config["node"]
     assert align_latent[0].shape == (config["n"], config["node_dim"])
     assert len(align_latent) == config["node"]
-    assert causal_latent.shape == (config["n"], config["node_dim"] * config["node"])
+    assert causal_latent[0].shape == (config["n"], config["node_dim"])
+    assert len(causal_latent) == config["node"]
     assert xhat.shape == (config["n"], 96, 96, 3)
     
-    inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(latent_orig, 1, dim=2)], 
+    mean, logvar, prior_logvar, orig_latent, scaled_latent, align_latent, causal_latent, xhat = model([batch, u], running=False)
+    
+    inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(orig_latent, 1, dim=2)], 
                                                         model.inverse(causal_latent))]).sum())
     assert inverse_diff / (config["n"] * config["node"] * config["node_dim"]) < 1e-5
     
@@ -215,7 +223,10 @@ if __name__ == '__main__':
 # B = B.to(device) # binary adjacency matrix
 # I = torch.eye(config["node"]).to(device)
 # I_B_inv = torch.inverse(I - B)
-# scaling = I_B_inv.sum(axis=0)
+
+# momentum = 0.9
+# running_mean = torch.zeros(1, config["node"] * config["node_dim"])
+# running_std = torch.zeros(1, config["node"] * config["node_dim"])
 
 # """Generalized Linear SEM: Invertible NN"""
 # flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
@@ -252,19 +263,32 @@ if __name__ == '__main__':
 # image = torch.randn(10, 96, 96, 3)
 # u = torch.randn(10, config["node"])
 
+# update_running = True
+
 # h = encoder(nn.Flatten()(image)) # [batch, node * node_dim * 2]
-# mean, logvar = torch.split(h, config["node"] * config["node_dim"], dim=1)
+# mean, logvar = torch.split(h, config["node_dim"] * config["node"], dim=1)
 
 # """Latent Generating Process"""
-# noise = torch.randn(image.size(0), config["node"] * config["node_dim"]).to(device) 
+# noise = torch.randn(image.size(0), config["node_dim"] * config["node"]).to(device) 
 # epsilon = mean + torch.exp(logvar / 2) * noise
 # epsilon = epsilon.view(-1, config["node_dim"], config["node"]).contiguous()
 # latent = torch.matmul(epsilon, I_B_inv) # [batch, node_dim, node]
 # latent_orig = latent.clone()
+
+# """Scaling"""
+# latent = latent.view(-1, config["node_dim"] * config["node"]).contiguous()
+# stat_mean = latent.mean(axis=0)
+# stat_std = latent.std(axis=0)
+# if update_running:
+#     running_mean = momentum * running_mean + (1 - momentum) * stat_mean
+#     running_std = momentum * running_std + (1 - momentum) * stat_std
+# latent = (latent - stat_mean) / stat_std
+# latent = latent.view(-1, config["node_dim"], config["node"]).contiguous()
+
 # latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
 
 # # scaling
-# align_latent = list(map(lambda x, layer, s: layer(x) / s, latent, flows, scaling))
+# align_latent = list(map(lambda x, layer: layer(x), latent, flows))
 # causal_latent = torch.cat([torch.tanh(x) for x in align_latent], dim=1)
 
 # xhat = decoder(causal_latent)
