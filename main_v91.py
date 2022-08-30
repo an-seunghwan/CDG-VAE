@@ -269,6 +269,16 @@ def main():
     # """model load"""
     # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v91:v{}'.format(0), type='model')
     # artifact.metadata
+    # model_dir = artifact.download()
+    # model_ = VAE(B, config, device).to(device)
+    # if config["cuda"]:
+    #     model_.load_state_dict(torch.load(model_dir + '/model_v91.pth'))
+    # else:
+    #     model_.load_state_dict(torch.load(model_dir + '/model_v91.pth', map_location=torch.device('cpu')))
+    # [x.data for x in model.running_mean]
+    # [x.data for x in model.running_std]
+    # [x.data for x in model_.running_mean]
+    # [x.data for x in model_.running_std]
     
     wandb.run.finish()
 #%%

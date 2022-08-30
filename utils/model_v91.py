@@ -76,8 +76,10 @@ class VAE(nn.Module):
         
         """Running Statistics"""
         self.momentum = 0.9
-        self.running_mean = [torch.zeros(config["node_dim"], ).to(device) for _ in range(config["node"])]
-        self.running_std = [torch.ones(config["node_dim"], ).to(device) for _ in range(config["node"])]
+        self.running_mean = nn.ParameterList([nn.Parameter(torch.zeros(config["node_dim"], ).to(device), requires_grad=False) 
+                                            for _ in range(config["node"])])
+        self.running_std = nn.ParameterList([nn.Parameter(torch.ones(config["node_dim"], ).to(device), requires_grad=False) 
+                                            for _ in range(config["node"])])
         
         """Generalized Linear SEM: Invertible NN"""
         self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
@@ -125,10 +127,10 @@ class VAE(nn.Module):
         if running:
             align_latent = [(x - m) / s for x, m, s in zip(flow_latent, stat_mean, stat_std)]
             # update
-            self.running_mean = [self.momentum * m1 + (1 - self.momentum) * m2.detach()
-                                 for m1, m2 in zip(self.running_mean, stat_mean)]
-            self.running_std = [self.momentum * s1 + (1 - self.momentum) * s2.detach()
-                                 for s1, s2 in zip(self.running_std, stat_std)]
+            for m1, m2 in zip(self.running_mean, stat_mean):
+                m1.data = self.momentum * m1.data + (1 - self.momentum) * m2.detach()
+            for s1, s2 in zip(self.running_std, stat_std):
+                s1.data = self.momentum * s1.data + (1 - self.momentum) * s2.detach()
         else:
             align_latent = [(x - m) / s for x, m, s in zip(flow_latent, self.running_mean, self.running_std)]
         
@@ -166,13 +168,13 @@ def main():
     batch = torch.rand(config["n"], 96, 96, 3)
     u = torch.rand(config["n"], config["node"])
     print('before')
-    print('model.running_mean:', model.running_mean)
-    print('model.running_std:', model.running_std)
+    print('model.running_mean:', [x.data for x in model.running_mean])
+    print('model.running_std:', [x.data for x in model.running_std])
     print()
     mean, logvar, prior_logvar, orig_latent, flow_latent, align_latent, causal_latent, xhat = model([batch, u], running=True)
     print('after')
-    print('model.running_mean:', model.running_mean)
-    print('model.running_std:', model.running_std)
+    print('model.running_mean:', [x.data for x in model.running_mean])
+    print('model.running_std:', [x.data for x in model.running_std])
     
     assert mean.shape == (config["n"], config["node"] * config["node_dim"])
     assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
