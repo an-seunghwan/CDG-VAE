@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=0, 
+    parser.add_argument('--version', type=int, default=3, 
                         help='model version')
 
     if debug:
@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v90:v{}'.format(config["version"]), type='model')
@@ -187,6 +187,21 @@ def main():
     causal_max = np.quantile(causal_latents.detach().numpy(), q=0.9, axis=0)
     # causal_min = torch.min(causal_latents, axis=0).values.detach().numpy()
     # causal_max = torch.max(causal_latents, axis=0).values.detach().numpy()
+    
+    """causal latent max-min difference"""
+    fig = plt.figure(figsize=(5, 3))
+    plt.bar(np.arange(config["node"]), np.abs(causal_max - causal_min),
+            width=0.2)
+    plt.xticks(np.arange(config["node"]), dataset.name)
+    # plt.xlabel('node', fontsize=12)
+    plt.ylabel('latent', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig('{}/latent_maxmin.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'causal latent max-min difference': wandb.Image(fig)})
     
     """reconstruction"""
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
