@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_v90 import (
+from utils.model_v91 import (
     VAE,
 )
 
@@ -83,7 +83,7 @@ def get_args(debug):
                         help='observation noise')
     parser.add_argument('--lambda', default=1, type=float,
                         help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=5, type=float,
+    parser.add_argument('--gamma', default=3, type=float,
                         help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -111,7 +111,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, prior_logvar, latent_orig, causal_latent, align_latent, xhat = model([x_batch, y_batch])
+            mean, logvar, prior_logvar, orig_latent, flow_latent, align_latent, causal_latent, xhat = model([x_batch, y_batch], running=True)
             
             loss_ = []
             
@@ -131,7 +131,7 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('KL', KL))
             
             """DAG reconstruction"""
-            DAG_recon = 0.5 * torch.pow(latent_orig - latent_orig.matmul(model.B), 2).sum(axis=[1, 2]).mean()
+            DAG_recon = 0.5 * torch.pow(orig_latent - orig_latent.matmul(model.B), 2).sum(axis=[1, 2]).mean()
             loss_.append(('DAG_recon', DAG_recon))
             
             """Label Alignment"""
@@ -259,15 +259,15 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
 
     """model save"""
-    torch.save(model.state_dict(), './assets/model_v9.pth')
-    artifact = wandb.Artifact('model_v9', 
+    torch.save(model.state_dict(), './assets/model_v91.pth')
+    artifact = wandb.Artifact('model_v91', 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_v9.pth')
+    artifact.add_file('./assets/model_v91.pth')
     wandb.log_artifact(artifact)
     
     # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v9:v{}'.format(0), type='model')
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v91:v{}'.format(0), type='model')
     # artifact.metadata
     
     wandb.run.finish()

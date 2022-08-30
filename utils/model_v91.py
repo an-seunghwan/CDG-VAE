@@ -98,8 +98,9 @@ class VAE(nn.Module):
                     for _ in range(config["node"])]
         
     def inverse(self, input): # when input is computed with running=False
-        inverse_latent = list(map(lambda x, layer: layer.inverse(torch.atanh(x)), input, self.flows))
+        inverse_latent = list(map(lambda x: torch.atanh(x), input))
         inverse_latent = [x * s + m for x, m, s in zip(inverse_latent, self.running_mean, self.running_std)]
+        inverse_latent = list(map(lambda x, layer: layer.inverse(x), inverse_latent, self.flows))
         return inverse_latent
     
     def forward(self, input, running=True):
@@ -115,22 +116,21 @@ class VAE(nn.Module):
         orig_latent = latent.clone()
         latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         
-        """Scaling"""
-        stat_mean = [x.mean(axis=0) for x in latent]
-        stat_std = [x.std(axis=0) for x in latent]
+        """Flow"""
+        flow_latent = list(map(lambda x, layer: layer(x), latent, self.flows)) # [batch, node_dim] x node
+        
+        """Scaling and Alignment""" # [batch, node_dim] x node
+        stat_mean = [x.mean(axis=0) for x in flow_latent]
+        stat_std = [x.std(axis=0) for x in flow_latent]
         if running:
-            latent = [(x - m) / s for x, m, s in zip(latent, stat_mean, stat_std)]
+            align_latent = [(x - m) / s for x, m, s in zip(flow_latent, stat_mean, stat_std)]
             # update
             self.running_mean = [self.momentum * m1 + (1 - self.momentum) * m2.detach()
                                  for m1, m2 in zip(self.running_mean, stat_mean)]
             self.running_std = [self.momentum * s1 + (1 - self.momentum) * s2.detach()
                                  for s1, s2 in zip(self.running_std, stat_std)]
         else:
-            latent = [(x - m) / s for x, m, s in zip(latent, self.running_mean, self.running_std)]
-        scaled_latent = [x.clone() for x in latent] # [batch, node_dim] x node
-        
-        """Alignment"""
-        align_latent = list(map(lambda x, layer: layer(x), latent, self.flows)) # [batch, node_dim] x node
+            align_latent = [(x - m) / s for x, m, s in zip(flow_latent, self.running_mean, self.running_std)]
         
         """Causal"""
         causal_latent = [torch.tanh(x) for x in align_latent] # [batch, node_dim] x node
@@ -144,7 +144,7 @@ class VAE(nn.Module):
                         torch.split(label_, self.config["node_dim"], dim=1), self.prior))
         prior_logvar = torch.cat(prior_logvar, dim=2).view(-1, self.config["node_dim"] * self.config["node"]).contiguous()
         
-        return mean, logvar, prior_logvar, orig_latent, scaled_latent, align_latent, causal_latent, xhat
+        return mean, logvar, prior_logvar, orig_latent, flow_latent, align_latent, causal_latent, xhat
 #%%
 def main():
     config = {
@@ -169,7 +169,7 @@ def main():
     print('model.running_mean:', model.running_mean)
     print('model.running_std:', model.running_std)
     print()
-    mean, logvar, prior_logvar, orig_latent, scaled_latent, align_latent, causal_latent, xhat = model([batch, u], running=True)
+    mean, logvar, prior_logvar, orig_latent, flow_latent, align_latent, causal_latent, xhat = model([batch, u], running=True)
     print('after')
     print('model.running_mean:', model.running_mean)
     print('model.running_std:', model.running_std)
@@ -178,15 +178,15 @@ def main():
     assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert prior_logvar.shape == (config["n"], config["node"] * config["node_dim"])
     assert orig_latent.shape == (config["n"], config["node_dim"], config["node"])
-    assert scaled_latent[0].shape == (config["n"], config["node_dim"])
-    assert len(scaled_latent) == config["node"]
+    assert flow_latent[0].shape == (config["n"], config["node_dim"])
+    assert len(flow_latent) == config["node"]
     assert align_latent[0].shape == (config["n"], config["node_dim"])
     assert len(align_latent) == config["node"]
     assert causal_latent[0].shape == (config["n"], config["node_dim"])
     assert len(causal_latent) == config["node"]
     assert xhat.shape == (config["n"], 96, 96, 3)
     
-    mean, logvar, prior_logvar, orig_latent, scaled_latent, align_latent, causal_latent, xhat = model([batch, u], running=False)
+    mean, logvar, prior_logvar, orig_latent, flow_latent, align_latent, causal_latent, xhat = model([batch, u], running=False)
     
     inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(orig_latent, 1, dim=2)], 
                                                         model.inverse(causal_latent))]).sum())
