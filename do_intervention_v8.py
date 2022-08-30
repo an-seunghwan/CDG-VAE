@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=7, 
+    parser.add_argument('--version', type=int, default=6, 
                         help='model version')
 
     if debug:
@@ -225,11 +225,11 @@ def main():
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     
     """reconstruction with do-intervention"""
-    # do_index = 0
-    # do_value = 0
     for do_index, (min, max) in enumerate(zip(causal_min, causal_max)):
         fig, ax = plt.subplots(3, 3, figsize=(5, 5))
         
+        # do_index = 2
+        # do_value = 0
         for k, do_value in enumerate(np.linspace(min, max, 9)):
             do_value = round(do_value, 1)
             causal_latent_ = causal_latent.clone()
