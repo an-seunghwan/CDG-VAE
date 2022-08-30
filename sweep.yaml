@@ -1,5 +1,5 @@
 project: (causal)VAE
-program: main_v9.py
+program: main_v91.py
 method: grid
 metric:
   goal: minimize
@@ -16,7 +16,7 @@ parameters:
   lambda:
     values: [1, 3, 5]
   gamma:
-    values: [1, 3, 5]
+    values: [3, 5, 1]
   # label_normalization:
   #   values: [False, True]
   # adjacency_scaling:
