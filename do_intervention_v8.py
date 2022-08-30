@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v8:v{}'.format(config["version"]), type='model')
@@ -219,7 +219,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/original_and_recon.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
@@ -245,7 +245,7 @@ def main():
                     z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
             z = torch.split(z, 1, dim=1)
             z = list(map(lambda x, layer: layer(x), z, model.flows))
-            z = torch.cat([torch.tanh(x / s) for x, s in zip(z, model.indegree)], dim=1)
+            z = torch.cat([torch.tanh(x / s) for x, s in zip(z, model.scaling)], dim=1)
             
             do_xhat = model.decode(z)[0]
 
@@ -256,7 +256,7 @@ def main():
         
         plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
         plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
-        plt.show()
+        # plt.show()
         plt.close()
         
         wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
@@ -307,8 +307,9 @@ def main():
                 z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
         z = torch.split(z, 1, dim=1)
         z = list(map(lambda x, layer: layer(x), z, model.flows))
+        z = torch.cat([torch.tanh(x / s) for x, s in zip(z, model.scaling)], dim=1)
         
-        do_xhat = model.decoder(torch.cat(z, dim=1)).view(96, 96, 3)
+        do_xhat = model.decoder(z).view(96, 96, 3)
 
         ax.flatten()[k+2].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
         ax.flatten()[k+2].axis('off')
@@ -316,7 +317,7 @@ def main():
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('{}/intervention_result.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'do intervention': wandb.Image(fig)})

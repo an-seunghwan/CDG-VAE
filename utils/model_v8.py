@@ -115,7 +115,7 @@ class VAE(nn.Module):
         
         # scaling
         align_latent = list(map(lambda x, layer, s: layer(x) / s, latent, self.flows, self.scaling))
-        causal_latent = torch.cat([torch.tanh(x) for x in zip(align_latent)], dim=1)
+        causal_latent = torch.cat([torch.tanh(x) for x in align_latent], dim=1)
         
         return mean, logvar, latent_orig, causal_latent
     

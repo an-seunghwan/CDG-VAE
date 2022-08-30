@@ -53,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=3, 
+    parser.add_argument('--version', type=int, default=1, 
                         help='model version')
 
     if debug:
@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v7:v{}'.format(config["version"]), type='model')
@@ -219,7 +219,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/original_and_recon.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
@@ -255,7 +255,7 @@ def main():
         
         plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
         plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
-        plt.show()
+        # plt.show()
         plt.close()
         
         wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
@@ -315,7 +315,7 @@ def main():
     
     # plt.suptitle('do({} = x)'.format(name[do_index]), fontsize=15)
     plt.savefig('{}/intervention_result.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'do intervention': wandb.Image(fig)})
