@@ -16,7 +16,7 @@ parameters:
   lambda:
     values: [1, 3, 5]
   gamma:
-    values: [3, 5, 1]
+    values: [1, 3, 5]
   # label_normalization:
   #   values: [False, True]
   # adjacency_scaling:
