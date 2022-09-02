@@ -11,7 +11,7 @@ parameters:
   #   values: [1]
   # beta:
   #   values: [0.1, 1, 10]
-  flow_num:
-    values: [10, 5]
+  # flow_num:
+  #   values: [10, 5]
   lambda:
     values: [5, 1, 10]
