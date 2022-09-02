@@ -26,11 +26,9 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_0 import (
-    VAE,
-)
-
-from utils.trac_exp import trace_expm
+# from utils.model_0 import (
+#     VAE,
+# )
 #%%
 import sys
 import subprocess
@@ -55,35 +53,34 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument('--version', type=int, default=0, 
+                        help='model version')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=4, type=int,
+    parser.add_argument("--flow_num", default=10, type=int,
                         help="the number of invertible NN (planar flow)")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
-    parser.add_argument("--prior_flow_num", default=4, type=int,
-                        help="the number of invertible NN (planar flow) in prior distribution")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
-    parser.add_argument("--adjacency_scaling", default=False, type=bool,
-                        help="If True, scaling adjacency matrix with in-degree")
     
-    parser.add_argument('--epochs', default=200, type=int,
+    parser.add_argument('--image_size', default=64, type=int,
+                        help='width and heigh of image')
+    
+    parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=64, type=int,
+    parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=1, type=float,
-                        help='weight of DAG reconstruction loss')
-    parser.add_argument('--gamma', default=3, type=float,
+    parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -97,7 +94,6 @@ def train(dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
-        'DAG_recon': [],
         'KL': [],
         'alignment': [],
     }
@@ -111,7 +107,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, prior_logvar, orig_latent, flow_latent, align_latent, causal_latent, xhat = model([x_batch, y_batch], running=True)
+            mean, logvar, orig_latent, latent, align_latent, xhat = model(x_batch)
             
             loss_ = []
             
@@ -121,26 +117,24 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('recon', recon))
             
             """KL-Divergence"""
-            KL = (torch.pow(mean, 2) / torch.exp(prior_logvar)).sum(axis=1)
-            KL += prior_logvar.sum(axis=1)
+            KL = torch.pow(mean, 2).sum(axis=1)
             KL -= logvar.sum(axis=1)
-            KL += torch.exp(logvar - prior_logvar).sum(axis=1)
+            KL += torch.exp(logvar).sum(axis=1)
             KL -= config["node"]
             KL *= 0.5
             KL = KL.mean()
             loss_.append(('KL', KL))
             
-            """DAG reconstruction"""
-            DAG_recon = 0.5 * torch.pow(orig_latent - orig_latent.matmul(model.B), 2).sum(axis=[1, 2]).mean()
-            loss_.append(('DAG_recon', DAG_recon))
-            
-            """Label Alignment"""
-            align = 0.5 * torch.pow(torch.cat(align_latent, dim=1) - y_batch, 2).sum(axis=1).mean()
+            """Label Alignment : CrossEntropy"""
+            align = torch.nn.functional.binary_cross_entropy(
+                torch.sigmoid(torch.cat(align_latent, dim=1)), 
+                y_batch,
+                reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
+            # align = 0.5 * torch.pow(torch.cat(align_latent, dim=1) - y_batch, 2).sum(axis=1).mean() # L2 loss
             
             loss = recon + config["beta"] * KL 
-            loss += config["lambda"] * DAG_recon
-            loss += config["gamma"] * align
+            loss += config["lambda"] * align
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -166,20 +160,21 @@ def main():
     """dataset"""
     class CustomDataset(Dataset): 
         def __init__(self, config):
-            train_imgs = os.listdir('./utils/causal_data/pendulum/train')
+            train_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/train') if x.endswith('png')]
             train_x = []
             for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
                 train_x.append(np.array(
-                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((96, 96))
+                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((config["image_size"], config["image_size"]))
                     )[:, :, :3])
             self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
             
             label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
             label = label - label.mean(axis=0)
             self.std = label.std(axis=0)
-            if config["label_normalization"]:
-                label = label / label.std(axis=0)
-            self.y_data = label.round(2)
+            """bounded label: normalize to (0, 1)"""
+            if config["label_normalization"]: 
+                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
+            self.y_data = label
             self.name = ['light', 'angle', 'length', 'position']
 
         def __len__(self): 
@@ -201,7 +196,7 @@ def main():
     angle -> position
     length -- position
     
-    Since var(length) < var(position), we set length -> position
+    # Since var(length) < var(position), we set length -> position
     """
     # dataset.std
     B = torch.zeros(config["node"], config["node"])
@@ -210,13 +205,12 @@ def main():
     B[dataset.name.index('light'), dataset.name.index('position')] = B_value
     B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
     B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
-    B[dataset.name.index('length'), dataset.name.index('position')] = B_value
+    # B[dataset.name.index('length'), dataset.name.index('position')] = B_value
     
-    """adjacency matrix scaling"""
-    if config["adjacency_scaling"]:
-        indegree = B.sum(axis=0)
-        mask = (indegree != 0)
-        B[:, mask] = B[:, mask] / indegree[mask]
+    """import model"""
+    tmp = __import__("utils.model_{}".format(config["version"]), 
+                    fromlist=["utils.model_{}".format(config["version"])])
+    VAE = getattr(tmp, "VAE")
     
     model = VAE(B, config, device)
     model.to(device)
@@ -259,26 +253,24 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
 
     """model save"""
-    torch.save(model.state_dict(), './assets/model_v91.pth')
-    artifact = wandb.Artifact('model_v91', 
+    torch.save(model.state_dict(), './assets/model_{}.pth'.format(config["version"]))
+    artifact = wandb.Artifact('model_{}'.format(config["version"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_v91.pth')
+    artifact.add_file('./assets/model_{}.pth'.format(config["version"]))
+    artifact.add_file('./main_{}.py'.format(config["version"]))
+    artifact.add_file('./utils/model_{}.py'.format(config["version"]))
     wandb.log_artifact(artifact)
     
     # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_v91:v{}'.format(0), type='model')
+    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], 0), type='model')
     # artifact.metadata
     # model_dir = artifact.download()
     # model_ = VAE(B, config, device).to(device)
     # if config["cuda"]:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_v91.pth'))
+    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"])))
     # else:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_v91.pth', map_location=torch.device('cpu')))
-    # [x.data for x in model.running_mean]
-    # [x.data for x in model.running_std]
-    # [x.data for x in model_.running_mean]
-    # [x.data for x in model_.running_std]
+    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"]), map_location=torch.device('cpu')))
     
     wandb.run.finish()
 #%%

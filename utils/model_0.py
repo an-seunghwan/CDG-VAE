@@ -62,7 +62,7 @@ class VAE(nn.Module):
         
         """encoder"""
         self.encoder = nn.Sequential(
-            nn.Linear(3*96*96, 300),
+            nn.Linear(3*config["image_size"]*config["image_size"], 300),
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
@@ -84,7 +84,7 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
-            nn.Linear(300, 3*96*96),
+            nn.Linear(300, 3*config["image_size"]*config["image_size"]),
             nn.Tanh()
         ).to(device)
         
@@ -106,7 +106,7 @@ class VAE(nn.Module):
         latent = list(map(lambda x, layer: layer(x), latent, self.flows)) # [batch, node_dim] x node
         
         xhat = self.decoder(torch.cat(latent, dim=1))
-        xhat = xhat.view(-1, 96, 96, 3)
+        xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
         
         """Alignment"""
         mean_ = mean.view(-1, self.config["node_dim"], self.config["node"]).contiguous() # deterministic part
@@ -118,6 +118,7 @@ class VAE(nn.Module):
 #%%
 def main():
     config = {
+        "image_size": 64,
         "n": 64,
         "node": 4,
         "node_dim": 2, 
@@ -132,7 +133,7 @@ def main():
     for x in model.parameters():
         print(x.shape)
         
-    batch = torch.rand(config["n"], 96, 96, 3)
+    batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
     mean, logvar, orig_latent, latent, align_latent, xhat = model(batch)
     
     assert mean.shape == (config["n"], config["node"] * config["node_dim"])
@@ -142,7 +143,7 @@ def main():
     assert len(latent) == config["node"]
     assert align_latent[0].shape == (config["n"], config["node_dim"])
     assert len(align_latent) == config["node"]
-    assert xhat.shape == (config["n"], 96, 96, 3)
+    assert xhat.shape == (config["n"], config["image_size"], config["image_size"], 3)
     
     mean, logvar, orig_latent, latent, align_latent, xhat = model(batch)
     
