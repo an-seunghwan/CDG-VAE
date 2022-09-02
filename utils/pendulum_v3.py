@@ -19,7 +19,6 @@ if not os.path.exists('./causal_data/pendulum/'):
     os.makedirs('./causal_data/pendulum/train/train_dataset')
     os.makedirs('./causal_data/pendulum/test/test_dataset')
 #%%
-count = 0
 train = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 #%%
@@ -31,7 +30,8 @@ pendulum_angle_list = np.random.uniform(0, math.pi/4, 100)
 center = (10, 10.5) # (c_x, c_y) : the axis's of the center     
 l = 9.5  # length of pendulum (including the red ball)
 b = -0.5
-
+#%%
+count = 0
 for pendulum_angle in tqdm.tqdm(pendulum_angle_list):
     for light_angle in light_angle_list:
         objects = []
@@ -53,17 +53,17 @@ for pendulum_angle in tqdm.tqdm(pendulum_angle_list):
         xi_4 /= 2
         
         objects.append(('light', xi_2))
-        objects.append(('theta', xi_1))
+        objects.append(('angle', xi_1))
         objects.append(('length', xi_3))
         objects.append(('position', xi_4))
-        name = '_'.join([str(round(j, 2)) for i,j in objects])
+        name = '_'.join([str(round(j, 4)) for i,j in objects])
         
         plt.rcParams['figure.figsize'] = (1.0, 1.0)
         
         sun = plt.Circle((light, 20.5), 3, color = 'orange') 
-        gun = plt.Polygon(([10,10.5],[x,y]), color = 'black', linewidth = 3)
+        gun = plt.Polygon(([10, 10.5],[x,y]), color = 'black', linewidth = 3)
         ball = plt.Circle((x,y), 1.5, color = 'firebrick')
-        shadow = plt.Polygon(([xi_4 - xi_3/2.0, -0.5],[xi_4 + xi_3/2.0, -0.5]), color = 'black', linewidth = 3)
+        shadow = plt.Polygon(([xi_4 - xi_3 / 2.0, -0.5],[xi_4 + xi_3 / 2.0, -0.5]), color = 'black', linewidth = 3)
         
         ax = plt.gca()
         ax.add_artist(sun)
@@ -88,9 +88,11 @@ for pendulum_angle in tqdm.tqdm(pendulum_angle_list):
         plt.clf()
         count += 1
 #%%
-# train_imgs = os.listdir('./causal_data/pendulum/train')
+# train_imgs = [x for x in os.listdir('./causal_data/pendulum/train') if x.endswith('.png')]
 # len(train_imgs)
+# test_imgs = [x for x in os.listdir('./causal_data/pendulum/test') if x.endswith('.png')]
+# len(test_imgs)
 # label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
 # label.std(axis=0).round(2)
-# # label.mean(axis=0).round(2)
+# label.mean(axis=0).round(2)
 #%%

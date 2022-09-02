@@ -66,7 +66,7 @@ def main():
 
     set_random_seed(config["seed"])
 
-    train_imgs = os.listdir('./utils/causal_data/pendulum/train')
+    train_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/train') if x.endswith('png')]
     label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
     label = label - label.mean(axis=0).round(2) 
     print("Label Dataset Mean:", label.mean(axis=0).round(2))
