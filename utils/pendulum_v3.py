@@ -2,6 +2,7 @@
 """
 Reference
 [1]: https://github.com/huawei-noah/trustworthyAI/blob/master/research/CausalVAE/causal_data/pendulum.py
+[2]: https://arxiv.org/abs/2010.02637
 """
 #%%
 import matplotlib.pyplot as plt
@@ -16,8 +17,8 @@ import warnings
 warnings.filterwarnings('ignore')
 #%%
 if not os.path.exists('./causal_data/pendulum/'): 
-    os.makedirs('./causal_data/pendulum/train/train_dataset')
-    os.makedirs('./causal_data/pendulum/test/test_dataset')
+    os.makedirs('./causal_data/pendulum/train')
+    os.makedirs('./causal_data/pendulum/test')
 #%%
 train = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
@@ -25,8 +26,10 @@ test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 """Data Generating Process"""
 np.random.seed(1)
 
-light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 100)    
-pendulum_angle_list = np.random.uniform(0, math.pi/4, 100)
+# light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 100)
+# pendulum_angle_list = np.random.uniform(0, math.pi/4, 100)
+light_angle_list= np.linspace(math.pi/4, math.pi/2, 100)
+pendulum_angle_list = np.linspace(0, math.pi/4, 100)
 center = (10, 10.5) # (c_x, c_y) : the axis's of the center     
 l = 9.5  # length of pendulum (including the red ball)
 b = -0.5
