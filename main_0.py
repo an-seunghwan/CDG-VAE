@@ -67,6 +67,8 @@ def get_args(debug):
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
+    parser.add_argument("--adjacency_scaling", default=True, type=bool,
+                        help="If True, scaling adjacency matrix with in-degree")
     
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
@@ -206,6 +208,12 @@ def main():
     B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
     B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
     # B[dataset.name.index('length'), dataset.name.index('position')] = B_value
+    
+    """adjacency matrix scaling"""
+    if config["adjacency_scaling"]:
+        indegree = B.sum(axis=0)
+        mask = (indegree != 0)
+        B[:, mask] = B[:, mask] / indegree[mask]
     
     """import model"""
     tmp = __import__("utils.model_{}".format(config["version"]), 
