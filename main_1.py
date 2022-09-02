@@ -53,7 +53,7 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--version', type=int, default=0, 
+    parser.add_argument('--version', type=int, default=1, 
                         help='model version')
 
     parser.add_argument("--node", default=4, type=int,
@@ -212,7 +212,7 @@ def main():
                     fromlist=["utils.model_{}".format(config["version"])])
     VAE = getattr(tmp, "VAE")
     
-    model = VAE(B, config, device)
+    model = VAE(B, config, device) # B is mask!
     model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -267,6 +267,7 @@ def main():
     # artifact.metadata
     # model_dir = artifact.download()
     # model_ = VAE(B, config, device).to(device)
+    # # model_.W * model.mask
     # if config["cuda"]:
     #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"])))
     # else:

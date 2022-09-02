@@ -54,7 +54,7 @@ class PlanarFlows(nn.Module):
         return h
 #%%
 class VAE(nn.Module):
-    def __init__(self, B, config, device):
+    def __init__(self, mask, config, device):
         super(VAE, self).__init__()
         
         self.config = config
@@ -70,9 +70,12 @@ class VAE(nn.Module):
         ).to(device)
         
         """Causal Adjacency Matrix"""
-        self.B = B.to(device) 
+        self.mask = mask.to(device) 
+        self.W = nn.Parameter(
+            torch.randn((self.config["node"], self.config["node"]), 
+                        requires_grad=True).to(device)
+            )
         self.I = torch.eye(config["node"]).to(device)
-        self.I_B_inv = torch.inverse(self.I - self.B)
         
         """Generalized Linear SEM: Invertible NN"""
         self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
@@ -96,11 +99,14 @@ class VAE(nn.Module):
         h = self.encoder(nn.Flatten()(input)) # [batch, node * node_dim * 2]
         mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
         
+        B = self.W * self.mask
+        I_B_inv = torch.inverse(self.I - B)
+        
         """Latent Generating Process"""
         noise = torch.randn(input.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
         epsilon = mean + torch.exp(logvar / 2) * noise
         epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
-        latent = torch.matmul(epsilon, self.I_B_inv) # [batch, node_dim, node]
+        latent = torch.matmul(epsilon, I_B_inv) # [batch, node_dim, node]
         orig_latent = latent.clone()
         latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         latent = list(map(lambda x, layer: layer(x), latent, self.flows)) # [batch, node_dim] x node
@@ -110,7 +116,7 @@ class VAE(nn.Module):
         
         """Alignment"""
         mean_ = mean.view(-1, self.config["node_dim"], self.config["node"]).contiguous() # deterministic part
-        align_latent = torch.matmul(mean_, self.I_B_inv) # [batch, node_dim, node]
+        align_latent = torch.matmul(mean_, I_B_inv) # [batch, node_dim, node]
         align_latent = [x.squeeze(dim=2) for x in torch.split(align_latent, 1, dim=2)] # [batch, node_dim] x node
         align_latent = list(map(lambda x, layer: layer(x), align_latent, self.flows))
         
