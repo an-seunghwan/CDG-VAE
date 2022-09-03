@@ -51,9 +51,9 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--version', type=int, default=0, 
+    parser.add_argument('--version', type=int, default=1, 
                         help='model version')
-    parser.add_argument('--num', type=int, default=9, 
+    parser.add_argument('--num', type=int, default=3, 
                         help='model version')
 
     if debug:
@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], config["num"]), type='model')
@@ -160,12 +160,6 @@ def main():
     B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
     # B[dataset.name.index('length'), dataset.name.index('position')] = B_value
     
-    """adjacency matrix scaling"""
-    if config["adjacency_scaling"]:
-        indegree = B.sum(axis=0)
-        mask = (indegree != 0)
-        B[:, mask] = B[:, mask] / indegree[mask]
-    
     """import model"""
     tmp = __import__("utils.model_{}".format(config["version"]), 
                     fromlist=["utils.model_{}".format(config["version"])])
@@ -178,6 +172,12 @@ def main():
         model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"]), map_location=torch.device('cpu')))
     
     model.eval()
+    
+    """causal adjacency matrix"""
+    B_est = (model.W * model.mask).detach().numpy()
+    fig = viz_heatmap(np.flipud(B_est), size=(7, 7))
+    wandb.log({'B_est': wandb.Image(fig)})
+    B = model.W * model.mask
     
     """get intervention range"""
     latents = []
@@ -199,21 +199,15 @@ def main():
     # h = model.encoder(nn.Flatten()(x_batch)) # [batch, node * node_dim * 2]
     # mean, logvar = torch.split(h, model.config["node"] * model.config["node_dim"], dim=1)
     
+    # I_B_inv = torch.inverse(model.I - model.W * model.mask)
+    
     # """Latent Generating Process"""
     # noise = torch.randn(x_batch.size(0), model.config["node"] * model.config["node_dim"]).to(model.device) 
     # epsilon = mean + torch.exp(logvar / 2) * noise
     # epsilon = epsilon.view(-1, model.config["node_dim"], model.config["node"]).contiguous()
-    # latent = torch.matmul(epsilon, model.I_B_inv) # [batch, node_dim, node]
+    # latent = torch.matmul(epsilon, I_B_inv) # [batch, node_dim, node]
     
     # epsilon.squeeze(1).detach().numpy().round(2).mean(axis=0)
-    
-    # indegree = B.sum(axis=0)
-    # mask = (indegree != 0)
-    # B[:, mask] = B[:, mask] / indegree[mask]
-    # I = torch.eye(config["node"]).to(device)
-    # I_B_inv = torch.inverse(I - B)
-    
-    # latent = torch.matmul(epsilon, I_B_inv) # [batch, node_dim, node]
     # latent.squeeze(1).detach().numpy().round(2).mean(axis=0)
     
     # orig_latent = latent.clone()
@@ -301,7 +295,7 @@ def main():
                 else:
                     if j == 0:  # root node
                         z[:, j] = epsilon[:, j]
-                    z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+                    z[:, j] = torch.matmul(z[:, :j], B[:j, j]) + epsilon[:, j]
             z = torch.split(z, 1, dim=1)
             z = list(map(lambda x, layer: layer(x), z, model.flows))
             
@@ -362,7 +356,7 @@ def main():
             else:
                 if j == 0:  # root node
                     z[:, j] = epsilon[:, j]
-                z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+                z[:, j] = torch.matmul(z[:, :j], B[:j, j]) + epsilon[:, j]
         z = torch.split(z, 1, dim=1)
         z = list(map(lambda x, layer: layer(x), z, model.flows))
         
