@@ -53,7 +53,7 @@ def get_args(debug):
     
     parser.add_argument('--version', type=int, default=0, 
                         help='model version')
-    parser.add_argument('--num', type=int, default=9, 
+    parser.add_argument('--num', type=int, default=16, 
                         help='model version')
 
     if debug:
@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], config["num"]), type='model')
@@ -206,14 +206,6 @@ def main():
     # latent = torch.matmul(epsilon, model.I_B_inv) # [batch, node_dim, node]
     
     # epsilon.squeeze(1).detach().numpy().round(2).mean(axis=0)
-    
-    # indegree = B.sum(axis=0)
-    # mask = (indegree != 0)
-    # B[:, mask] = B[:, mask] / indegree[mask]
-    # I = torch.eye(config["node"]).to(device)
-    # I_B_inv = torch.inverse(I - B)
-    
-    # latent = torch.matmul(epsilon, I_B_inv) # [batch, node_dim, node]
     # latent.squeeze(1).detach().numpy().round(2).mean(axis=0)
     
     # orig_latent = latent.clone()
@@ -221,7 +213,7 @@ def main():
     # latent = list(map(lambda x, layer: layer(x), latent, model.flows)) # [batch, node_dim] x node
     
     # torch.sigmoid(torch.cat(latent, dim=1)).detach().numpy().round(2)
-    # latent[-1]
+    # (torch.sigmoid(torch.cat(latent, dim=1)) - y_batch).detach().numpy().round(2).mean(axis=0)
     
     """causal latent max-min difference"""
     fig = plt.figure(figsize=(5, 3))

@@ -53,7 +53,7 @@ def get_args(debug):
     
     parser.add_argument('--version', type=int, default=1, 
                         help='model version')
-    parser.add_argument('--num', type=int, default=3, 
+    parser.add_argument('--num', type=int, default=25, 
                         help='model version')
 
     if debug:
@@ -198,6 +198,9 @@ def main():
     
     # h = model.encoder(nn.Flatten()(x_batch)) # [batch, node * node_dim * 2]
     # mean, logvar = torch.split(h, model.config["node"] * model.config["node_dim"], dim=1)
+    # # mean.detach().numpy().round(2)
+    # # logvar.detach().numpy().round(2)
+    # # torch.exp(logvar)
     
     # I_B_inv = torch.inverse(model.I - model.W * model.mask)
     

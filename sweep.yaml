@@ -1,5 +1,5 @@
 project: (causal)VAE
-program: main_0.py
+program: main_1.py
 method: grid
 metric:
   goal: minimize
@@ -9,9 +9,9 @@ parameters:
   #   values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
   # node_dim:
   #   values: [1]
-  # beta:
-  #   values: [0.1, 1, 10]
-  # flow_num:
-  #   values: [10, 5]
+  beta:
+    values: [0.1, 0.5, 1, 10]
+  flow_num:
+    values: [5, 10]
   lambda:
-    values: [5, 1, 10]
+    values: [1, 5, 10]
