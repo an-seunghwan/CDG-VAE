@@ -252,7 +252,7 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """estimated causal adjacency matrix"""
-    B_est = (model.W * model.mask).detach().numpy()
+    B_est = (model.W * model.mask).detach().cpu().numpy()
     fig = viz_heatmap(np.flipud(B_est), size=(7, 7))
     wandb.log({'B_est': wandb.Image(fig)})
 
