@@ -1,5 +1,5 @@
 project: (causal)VAE
-program: main_1.py
+program: main_2.py
 method: grid
 metric:
   goal: minimize
