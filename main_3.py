@@ -60,10 +60,6 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
-    parser.add_argument("--flow_num", default=5, type=int,
-                        help="the number of invertible NN (planar flow)")
-    parser.add_argument("--inverse_loop", default=100, type=int,
-                        help="the number of inverse loop")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
