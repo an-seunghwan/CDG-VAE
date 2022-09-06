@@ -53,7 +53,7 @@ def get_args(debug):
     
     parser.add_argument('--version', type=int, default=3, 
                         help='model version')
-    parser.add_argument('--num', type=int, default=8, 
+    parser.add_argument('--num', type=int, default=31, 
                         help='model version')
 
     if debug:
@@ -213,12 +213,12 @@ def main():
     # a = torch.cat(latent_, dim=1).detach().numpy().round(2)
     
     # if model.config["node_dim"] == 1:
-    #     latent = list(map(lambda x, layer: layer(x), latent_, model.nonlinear))# [batch, 1] x node
+    #     latent = list(map(lambda x, layer: layer(x), latent_, model.transform))# [batch, 1] x node
     # else:
     #     latent = []
     #     for i, z in enumerate(latent_):
     #         z_ = torch.split(z, 1, dim=1)
-    #         latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, model.nonlinear[i])), dim=1)) # [batch, node_dim] x node
+    #         latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, model.transform[i])), dim=1)) # [batch, node_dim] x node
     
     # b = torch.cat(latent, dim=1).detach().numpy().round(2)
     
@@ -233,15 +233,15 @@ def main():
     # align_latent_ = [x.squeeze(dim=2) for x in torch.split(align_latent, 1, dim=2)] # [batch, node_dim] x node
     
     # if model.config["node_dim"] == 1:
-    #     align_latent = list(map(lambda x, layer: layer(x), align_latent_, model.nonlinear)) # [batch, 1] x node
+    #     align_latent = list(map(lambda x, layer: layer(x), align_latent_, model.transform)) # [batch, 1] x node
     # else:
     #     align_latent = []
     #     for i, z in enumerate(align_latent_):
     #         z_ = torch.split(z, 1, dim=1)
-    #         align_latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, model.nonlinear[i])), dim=1)) # [batch, node_dim] x node
+    #         align_latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, model.transform[i])), dim=1)) # [batch, node_dim] x node
     
-    # torch.sigmoid(torch.cat(align_latent, dim=1))
-    # y_batch
+    # torch.sigmoid(torch.cat(align_latent, dim=1))[0, :]
+    # y_batch[0, :]
     
     """causal latent max-min difference"""
     fig = plt.figure(figsize=(5, 3))
@@ -323,7 +323,7 @@ def main():
                         z[:, j] = epsilon[:, j]
                     z[:, j] = torch.matmul(z[:, :j], B[:j, j]) + epsilon[:, j]
             z = torch.split(z, 1, dim=1)
-            z = list(map(lambda x, layer: layer(x), z, model.nonlinear))
+            z = list(map(lambda x, layer: layer(x), z, model.transform))
             
             do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
 
@@ -384,7 +384,7 @@ def main():
                     z[:, j] = epsilon[:, j]
                 z[:, j] = torch.matmul(z[:, :j], B[:j, j]) + epsilon[:, j]
         z = torch.split(z, 1, dim=1)
-        z = list(map(lambda x, layer: layer(x), z, model.nonlinear))
+        z = list(map(lambda x, layer: layer(x), z, model.transform))
         
         do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
 
