@@ -5,6 +5,24 @@ import torch.nn.functional as F
 
 import numpy as np
 #%%
+class InvertiblePriorLinear(nn.Module):
+    """Invertible Prior for Linear case
+
+    Parameter:
+        p: mean and std parameter for scaling
+    """
+    def __init__(self, device='cpu'):
+        super(InvertiblePriorLinear, self).__init__()
+        self.p = nn.Parameter(torch.rand([2])).to(device)
+
+    def forward(self, eps):
+        o = self.p[0] * eps + self.p[1]
+        return o
+    
+    def inverse(self, o):
+        eps = (o - self.p[1]) / self.p[0]
+        return eps
+#%%
 class InvertiblePWL(nn.Module):
     """_summary_
     Reference:
@@ -101,11 +119,17 @@ class VAE(nn.Module):
         
         """Generalized Linear SEM: Invertible NN"""
         if config["node_dim"] == 1:
-            self.nonlinear = [InvertiblePWL(device=device) for _ in range(config["node"])]
+            if config["scm"] == "linear":
+                self.transform = [InvertiblePriorLinear(device=device) for _ in range(config["node"])]
+            else:
+                self.transform = [InvertiblePWL(device=device) for _ in range(config["node"])]
         else:
-            self.nonlinear = {}
+            self.transform = {}
             for i in range(config["node"]):
-                self.nonlinear[i] = [InvertiblePWL(device=device) for _ in range(config["node_dim"])]
+                if config["scm"] == "linear":
+                    self.transform[i] = [InvertiblePriorLinear(device=device) for _ in range(config["node"])]
+                else:
+                    self.transform[i] = [InvertiblePWL(device=device) for _ in range(config["node"])]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -119,12 +143,12 @@ class VAE(nn.Module):
         
     def inverse(self, input): 
         if self.config["node_dim"] == 1:
-            inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.nonlinear)) # [batch, 1] x node
+            inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.transform)) # [batch, 1] x node
         else:
             inverse_latent = []
             for i, z in enumerate(input):
                 z_ = torch.split(z, 1, dim=1)
-                inverse_latent.append(torch.cat(list(map(lambda x, layer: layer.inverse(x), z_, self.nonlinear[i])), dim=1)) # [batch, node_dim] x node
+                inverse_latent.append(torch.cat(list(map(lambda x, layer: layer.inverse(x), z_, self.transform[i])), dim=1)) # [batch, node_dim] x node
         return inverse_latent
     
     def forward(self, input):
@@ -143,12 +167,12 @@ class VAE(nn.Module):
         latent_ = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
         
         if self.config["node_dim"] == 1:
-            latent = list(map(lambda x, layer: layer(x), latent_, self.nonlinear))# [batch, 1] x node
+            latent = list(map(lambda x, layer: layer(x), latent_, self.transform))# [batch, 1] x node
         else:
             latent = []
             for i, z in enumerate(latent_):
                 z_ = torch.split(z, 1, dim=1)
-                latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, self.nonlinear[i])), dim=1)) # [batch, node_dim] x node
+                latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, self.transform[i])), dim=1)) # [batch, node_dim] x node
         
         xhat = self.decoder(torch.cat(latent, dim=1))
         xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
@@ -159,12 +183,12 @@ class VAE(nn.Module):
         align_latent_ = [x.squeeze(dim=2) for x in torch.split(align_latent, 1, dim=2)] # [batch, node_dim] x node
         
         if self.config["node_dim"] == 1:
-            align_latent = list(map(lambda x, layer: layer(x), align_latent_, self.nonlinear)) # [batch, 1] x node
+            align_latent = list(map(lambda x, layer: layer(x), align_latent_, self.transform)) # [batch, 1] x node
         else:
             align_latent = []
             for i, z in enumerate(align_latent_):
                 z_ = torch.split(z, 1, dim=1)
-                align_latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, self.nonlinear[i])), dim=1)) # [batch, node_dim] x node
+                align_latent.append(torch.cat(list(map(lambda x, layer: layer(x), z_, self.transform[i])), dim=1)) # [batch, node_dim] x node
         
         return mean, logvar, orig_latent, latent, align_latent, xhat
 #%%
@@ -176,6 +200,7 @@ def main():
         "node_dim": 2, 
         "flow_num": 4,
         "inverse_loop": 100,
+        "scm": 'linear'
     }
     
     B = torch.zeros(config["node"], config["node"])

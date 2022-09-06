@@ -60,6 +60,8 @@ def get_args(debug):
                         help="the number of nodes")
     parser.add_argument("--node_dim", default=1, type=int,
                         help="dimension of each node")
+    parser.add_argument("--scm", default="linear", type=str,
+                        help="The type of transformation in SCM")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
@@ -225,10 +227,10 @@ def main():
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
         print(print_input)
         
-        if epoch % 10 == 0:
-            """update log"""
-            wandb.log({x : np.mean(y) for x, y in logs.items()})
+        """update log"""
+        wandb.log({x : np.mean(y) for x, y in logs.items()})
             
+        if epoch % 10 == 0:
             plt.figure(figsize=(4, 4))
             for i in range(9):
                 plt.subplot(3, 3, i+1)
