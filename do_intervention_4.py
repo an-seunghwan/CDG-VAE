@@ -53,7 +53,7 @@ def get_args(debug):
     
     parser.add_argument('--version', type=int, default=4, 
                         help='model version')
-    parser.add_argument('--num', type=int, default=0, 
+    parser.add_argument('--num', type=int, default=19, 
                         help='model version')
 
     if debug:
@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], config["num"]), type='model')
@@ -181,7 +181,7 @@ def main():
     
     """get intervention range"""
     latents = []
-    iter_test = iter(test_dataloader)
+    iter_test = iter(dataloader)
     for x_batch, y_batch in tqdm.tqdm(iter_test):
         if config["cuda"]:
             x_batch = x_batch.cuda()
@@ -212,8 +212,9 @@ def main():
     wandb.log({'causal latent max-min difference': wandb.Image(fig)})
     
     """reconstruction"""
-    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    iter_test = iter(test_dataloader)
+    # test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+    iter_test = iter(dataloader)
     count = 2
     for _ in range(count):
         x_batch, y_batch = next(iter_test)
@@ -245,16 +246,6 @@ def main():
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
-    
-    """reconstruction result"""
-    fig = plt.figure(figsize=(4, 4))
-    for i in range(9):
-        plt.subplot(3, 3, i+1)
-        plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
-        plt.axis('off')
-    plt.savefig('./assets/image.png')
-    plt.show()
-    plt.close()
     
     """reconstruction with do-intervention"""
     for do_index, (min, max) in enumerate(zip(causal_min, causal_max)):
@@ -291,7 +282,7 @@ def main():
         wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
     
     """for specific example"""
-    iter_test = iter(test_dataloader)
+    iter_test = iter(dataloader)
     count = 3
     for _ in tqdm.tqdm(range(count)):
         x_batch, y_batch = next(iter_test)
