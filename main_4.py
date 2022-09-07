@@ -36,7 +36,7 @@ try:
     import wandb
 except:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "wandb"])
-    with open("../wandb_api.txt", "r") as f:
+    with open("./wandb_api.txt", "r") as f:
         key = f.readlines()
     subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
     import wandb
@@ -271,7 +271,6 @@ def main():
     # artifact.metadata
     # model_dir = artifact.download()
     # model_ = VAE(B, config, device).to(device)
-    # # model_.W * model.mask
     # if config["cuda"]:
     #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"])))
     # else:
