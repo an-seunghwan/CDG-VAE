@@ -53,7 +53,7 @@ def get_args(debug):
     
     parser.add_argument('--version', type=int, default=6, 
                         help='model version')
-    parser.add_argument('--num', type=int, default=2, 
+    parser.add_argument('--num', type=int, default=7, 
                         help='model version')
 
     if debug:
@@ -214,7 +214,7 @@ def main():
     
     plt.tight_layout()
     plt.savefig('{}/posterior_variance.png'.format(model_dir), bbox_inches='tight')
-    plt.show()
+    # plt.show()
     plt.close()
     
     wandb.log({'posterior conditional variance': wandb.Image(fig)})
