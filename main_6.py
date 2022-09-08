@@ -70,7 +70,7 @@ def get_args(debug):
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scale adjacency matrix with in-degree")
-    parser.add_argument("--scm", default='linear', type=str,
+    parser.add_argument("--scm", default='nonlinear', type=str,
                         help="Structure of SCM, options: linear, nonlinear")
     
     parser.add_argument('--image_size', default=64, type=int,
@@ -87,7 +87,7 @@ def get_args(debug):
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
-    parser.add_argument('--gamma', default=5, type=float,
+    parser.add_argument('--gamma', default=0.001, type=float,
                         help='weight of mutual information loss')
     
     parser.add_argument('--fig_show', default=False, type=bool)
@@ -146,7 +146,7 @@ def train(dataloader, model, config, optimizer, device):
             align_last = y_hat.mean(axis=0)[-1]
             loss_.append(('align_last', align_last))
             
-            """Mutual Information"""
+            """Mutual Information : posterior log-density"""
             MI = 0.5 * logvar_hat.sum(axis=1)
             MI += 0.5 * (torch.pow(epsilon.squeeze() - mean_hat, 2) / torch.exp(logvar_hat)).sum(axis=1)
             MI += config["node"] / 2 * torch.log(torch.tensor(math.pi))
