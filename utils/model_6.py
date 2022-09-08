@@ -54,13 +54,14 @@ class PlanarFlows(nn.Module):
         self.input_dim = input_dim
         self.flow_num = flow_num
         self.inverse_loop = inverse_loop
-        self.alpha = torch.tensor(1, dtype=torch.float32) # parameter of ELU
+        self.device = device
+        self.alpha = torch.tensor(1, dtype=torch.float32).to(device) # parameter of ELU
         
-        self.w = [(nn.Parameter(torch.randn(self.input_dim, 1) * 0.1).to(device))
+        self.w = [(nn.Parameter(torch.randn(self.input_dim, 1)).to(device))
                   for _ in range(self.flow_num)]
-        self.b = [nn.Parameter((torch.randn(1, 1) * 0.1).to(device))
+        self.b = [nn.Parameter((torch.randn(1, 1)).to(device))
                   for _ in range(self.flow_num)]
-        self.u = [nn.Parameter((torch.randn(self.input_dim, 1) * 0.1).to(device))
+        self.u = [nn.Parameter((torch.randn(self.input_dim, 1)).to(device))
                   for _ in range(self.flow_num)]
         
     def build_u(self, u_, w_):
@@ -87,8 +88,8 @@ class PlanarFlows(nn.Module):
             u_ = self.build_u(self.u[j], self.w[j])
             if log_determinant:
                 x = h @ self.w[j] + self.b[j]
-                gradient = torch.where(x > 0, 
-                                       torch.tensor(1, dtype=torch.float32), 
+                gradient = torch.where(x > torch.tensor(0, dtype=torch.float32).to(self.device), 
+                                       torch.tensor(1, dtype=torch.float32).to(self.device), 
                                        self.alpha * torch.exp(x))
                 psi = gradient * self.w[j].squeeze()
                 logdet += torch.log((1 + psi @ u_).abs())
