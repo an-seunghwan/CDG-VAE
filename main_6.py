@@ -45,7 +45,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["GeneralizedLinearSEM", "fully-supervised", "Mutual-Information"],
+    tags=["GeneralizedLinearSEM", "fully-supervised", "Mutual-Information(without log-determinant)"],
 )
 #%%
 import argparse
@@ -150,7 +150,7 @@ def train(dataloader, model, config, optimizer, device):
             MI = 0.5 * logvar_hat.sum(axis=1)
             MI += 0.5 * (torch.pow(epsilon.squeeze() - mean_hat, 2) / torch.exp(logvar_hat)).sum(axis=1)
             MI += config["node"] / 2 * torch.log(torch.tensor(math.pi))
-            MI += torch.cat(logdet, dim=1).sum(axis=1)
+            # MI += torch.cat(logdet, dim=1).sum(axis=1) # log-determinant
             MI = MI.mean()
             loss_.append(('mutual_info', MI))
             
