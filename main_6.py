@@ -70,6 +70,8 @@ def get_args(debug):
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scale adjacency matrix with in-degree")
+    parser.add_argument("--scm", default='linear', type=str,
+                        help="Structure of SCM, options: linear, nonlinear")
     
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
@@ -167,7 +169,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)

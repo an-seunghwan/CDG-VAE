@@ -5,6 +5,29 @@ import torch.nn.functional as F
 
 import numpy as np
 #%%
+class InvertiblePriorLinear(nn.Module):
+    """Invertible Prior for Linear case
+    Reference:
+    [1]: https://github.com/xwshen51/DEAR/blob/main/causal_model.py
+
+    Parameter:
+        p: mean and std parameter for scaling
+    """
+    def __init__(self, device='cpu'):
+        super(InvertiblePriorLinear, self).__init__()
+        self.p = nn.Parameter(torch.rand([2])).to(device)
+
+    def forward(self, eps, log_determinant=False):
+        o = self.p[0] * eps + self.p[1]
+        logdet = 0
+        if log_determinant:
+            logdet += torch.log(self.p[0].abs()).repeat(eps.size(0), 1)
+        return o, logdet
+    
+    def inverse(self, o):
+        eps = (o - self.p[1]) / self.p[0]
+        return eps
+#%%
 class PlanarFlows(nn.Module):
     """invertible transformation with ELU
     ELU: h(x) = 
@@ -94,8 +117,16 @@ class VAE(nn.Module):
         self.I_B_inv = torch.inverse(self.I - self.B)
         
         """Generalized Linear SEM: Invertible NN"""
-        self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
-                    for _ in range(config["node"])]
+        if config["scm"] == "linear":
+            if config["node_dim"] != 1:
+                raise NotImplementedError("Linear SCM only supports node_dim=1")
+            self.flows = [InvertiblePriorLinear(device=device) 
+                          for _ in range(config["node"])]
+        elif config["scm"] == "nonlinear":
+            self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
+                        for _ in range(config["node"])]
+        else:
+            raise ValueError('Not supported SCM!')
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -161,9 +192,10 @@ def main():
         "image_size": 64,
         "n": 64,
         "node": 4,
-        "node_dim": 2, 
+        "node_dim": 1, 
         "flow_num": 4,
         "inverse_loop": 100,
+        "scm": 'linear'
     }
     
     B = torch.zeros(config["node"], config["node"])
@@ -204,113 +236,4 @@ def main():
 #%%
 if __name__ == '__main__':
     main()
-#%%
-# input_dim = 2
-# flow_num = 4
-# inverse_loop = 100
-# device = 'cpu'
-# log_determinant = True
-# alpha = torch.tensor(1, dtype=torch.float32) # parameter of ELU
-
-# w = [(nn.Parameter(torch.randn(input_dim, 1) * 0.1).to(device))
-#             for _ in range(flow_num)]
-# b = [nn.Parameter((torch.randn(1, 1) * 0.1).to(device))
-#             for _ in range(flow_num)]
-# u = [nn.Parameter((torch.randn(input_dim, 1) * 0.1).to(device))
-#             for _ in range(flow_num)]
-
-# def build_u(u_, w_):
-#     """sufficient condition to be invertible"""
-#     term1 = -1 + torch.log(1 + torch.exp(w_.t() @ u_))
-#     term2 = w_.t() @ u_
-#     u_hat = u_ + (term1 - term2) * (w_ / torch.norm(w_, p=2) ** 2)
-#     return u_hat
-
-# rand = torch.randn(10, input_dim)
-# h = rand
-# logdet = 0
-# for j in range(flow_num):
-#     u_ = build_u(u[j], w[j])
-#     if log_determinant:
-#         x = h @ w[j] + b[j]
-#         gradient = torch.where(x > 0, torch.tensor(1, dtype=torch.float32), alpha * torch.exp(x))
-#         psi = gradient * w[j].squeeze()
-#         logdet += torch.log((1 + psi @ u_).abs())
-#     h = h + u_.t() * F.elu(h @ w[j] + b[j], alpha=alpha)
-# #%%
-# for j in reversed(range(flow_num)):
-#     z = h
-#     for _ in range(inverse_loop):
-#         u_ = build_u(u[j], w[j]) 
-#         z = h - u_.t() * F.elu(z @ w[j] + b[j], alpha=alpha)
-#     h = z
-# h
-#%%
-# config = {
-#     "image_size": 64,
-#     "n": 64,
-#     "node": 4,
-#     "node_dim": 2, 
-#     "flow_num": 4,
-#     "inverse_loop": 100,
-# }
-
-# device = 'cpu'
-# B = torch.zeros(config["node"], config["node"])
-# B[:2, 2:] = 1
-# batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
-    
-# """encoder"""
-# encoder = nn.Sequential(
-#     nn.Linear(3*config["image_size"]*config["image_size"], 300),
-#     nn.ELU(),
-#     nn.Linear(300, 300),
-#     nn.ELU(),
-#     nn.Linear(300, config["node"] * config["node_dim"] * 2),
-# ).to(device)
-
-# """Causal Adjacency Matrix"""
-# B = B.to(device) 
-# I = torch.eye(config["node"]).to(device)
-# I_B_inv = torch.inverse(I - B)
-
-# """Generalized Linear SEM: Invertible NN"""
-# flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
-#             for _ in range(config["node"])]
-
-# """decoder"""
-# decoder = nn.Sequential(
-#     nn.Linear(config["node"] * config["node_dim"], 300),
-#     nn.ELU(),
-#     nn.Linear(300, 300),
-#     nn.ELU(),
-#     nn.Linear(300, 3*config["image_size"]*config["image_size"]),
-#     nn.Tanh()
-# ).to(device)
-# #%%
-# def inverse(self, input): 
-#     inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, flows))
-#     return inverse_latent
-# #%%
-# # def encode(self, input, deterministic=False):
-# deterministic=False
-# log_determinant=True
-
-# input = batch
-# h = encoder(nn.Flatten()(input)) # [batch, node * node_dim * 2]
-# mean, logvar = torch.split(h, config["node"] * config["node_dim"], dim=1)
-
-# """Latent Generating Process"""
-# if deterministic:
-#     epsilon = mean
-# else:
-#     noise = torch.randn(input.size(0), config["node"] * config["node_dim"]).to(device) 
-#     epsilon = mean + torch.exp(logvar / 2) * noise
-# epsilon = epsilon.view(-1, config["node_dim"], config["node"]).contiguous()
-# latent = torch.matmul(epsilon, I_B_inv) # [batch, node_dim, node]
-# orig_latent = latent.clone()
-# latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
-# latent = list(map(lambda x, layer: layer(x, log_determinant=log_determinant), latent, flows)) # [batch, node_dim] x node
-# logdet = [x[1] for x in latent]
-# latent = [x[0] for x in latent]
 #%%
