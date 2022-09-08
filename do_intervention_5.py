@@ -62,7 +62,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], config["num"]), type='model')
@@ -179,8 +179,14 @@ def main():
     
     model.eval()
     
-    """get intervention range"""
+    """
+    get intervention range 
+    & posterior conditional variance
+    & cross entropy of supervised loss
+    """
     latents = []
+    logvars = []
+    align_latents = []
     iter_test = iter(dataloader)
     for x_batch, y_batch in tqdm.tqdm(iter_test):
         if config["cuda"]:
@@ -189,12 +195,48 @@ def main():
             
         mean, logvar, orig_latent, latent, align_latent, xhat = model(x_batch)
         latents.append(torch.cat(latent, dim=1))
+        logvars.append(logvar)
+        align_latents.append(torch.cat(align_latent, dim=1))
         
     latents = torch.cat(latents, dim=0)
     causal_min = np.quantile(latents.detach().numpy(), q=0.05, axis=0)
     causal_max = np.quantile(latents.detach().numpy(), q=0.95, axis=0)
     # causal_min = torch.min(causal_latents, axis=0).values.detach().numpy()
     # causal_max = torch.max(causal_latents, axis=0).values.detach().numpy()
+    
+    logvars = torch.cat(logvars, dim=0)
+    fig = plt.figure(figsize=(5, 3))
+    plt.bar(np.arange(config["node"]), torch.exp(logvars.mean(axis=0)).detach().numpy(),
+            width=0.2)
+    plt.xticks(np.arange(config["node"]), dataset.name)
+    # plt.xlabel('node', fontsize=12)
+    plt.ylabel('posterior variance', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig('{}/posterior_variance.png'.format(model_dir), bbox_inches='tight')
+    plt.show()
+    plt.close()
+    
+    wandb.log({'posterior conditional variance': wandb.Image(fig)})
+    
+    align_latents = torch.cat(align_latents, dim=0)
+    y_hat = torch.sigmoid(align_latents)
+    align = F.binary_cross_entropy(y_hat, 
+                                   torch.tensor(dataset.y_data, dtype=torch.float32), 
+                                   reduction='none').mean(axis=0)
+    fig = plt.figure(figsize=(5, 3))
+    plt.bar(np.arange(config["node"]), align.detach().numpy(),
+            width=0.2)
+    plt.xticks(np.arange(config["node"]), dataset.name)
+    # plt.xlabel('node', fontsize=12)
+    plt.ylabel('latent', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig('{}/crossentropy.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'cross entropy of supervised loss': wandb.Image(fig)})
     
     """causal latent max-min difference"""
     fig = plt.figure(figsize=(5, 3))
@@ -210,6 +252,68 @@ def main():
     plt.close()
     
     wandb.log({'causal latent max-min difference': wandb.Image(fig)})
+    
+    """dependency of decoder on latent"""
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+    iter_test = iter(dataloader)
+    count = 1
+    for _ in range(count):
+        x_batch, y_batch = next(iter_test)
+    if config["cuda"]:
+        x_batch = x_batch.cuda()
+        y_batch = y_batch.cuda()
+    
+    mean, logvar, orig_latent, latent, align_latent, xhat = model(x_batch)
+    
+    latent_copy = [x.clone() for x in latent]
+    latent_copy[:2] = [torch.zeros(1, 1)] * 2
+    xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
+    
+    fig, ax = plt.subplots(2, 3, figsize=(6, 3))
+    ax[0, 0].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
+    # ax[0, 0].axis('off')
+    ax[1, 0].plot([x[0][0].item() for x in latent])
+    ax[1, 0].set_ylim(-2, 2)
+    ax[0, 1].imshow((xhat_copy[0].cpu().detach().numpy() + 1) / 2)
+    # ax[0, 1].axis('off')
+    ax[1, 1].plot([x[0][0].item() for x in latent_copy])
+    ax[1, 1].set_ylim(-2, 2)
+    ax[0, 2].imshow(((xhat - xhat_copy).abs().detach().numpy()[0] + 1) / 2)
+    ax[0, 2].axis('off')
+    # ax[1, 2].plot([x[0][0].item() - y[0][0].item() for x, y in zip(latent, latent_copy)])
+    # ax[1, 2].set_ylim(-2, 2)
+    fig.delaxes(ax[1, 2])
+    plt.tight_layout()
+    plt.savefig('{}/latent_dependency_root.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'dependency of decoder on latent (root)': wandb.Image(fig)})
+    
+    latent_copy = [x.clone() for x in latent]
+    latent_copy[2:] = [torch.zeros(1, 1)] * 2
+    xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
+    
+    fig, ax = plt.subplots(2, 3, figsize=(6, 3))
+    ax[0, 0].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
+    # ax[0, 0].axis('off')
+    ax[1, 0].plot([x[0][0].item() for x in latent])
+    ax[1, 0].set_ylim(-2, 2)
+    ax[0, 1].imshow((xhat_copy[0].cpu().detach().numpy() + 1) / 2)
+    # ax[0, 1].axis('off')
+    ax[1, 1].plot([x[0][0].item() for x in latent_copy])
+    ax[1, 1].set_ylim(-2, 2)
+    ax[0, 2].imshow(((xhat - xhat_copy).abs().detach().numpy()[0] + 1) / 2)
+    ax[0, 2].axis('off')
+    # ax[1, 2].plot([x[0][0].item() - y[0][0].item() for x, y in zip(latent, latent_copy)])
+    # ax[1, 2].set_ylim(-2, 2)
+    fig.delaxes(ax[1, 2])
+    plt.tight_layout()
+    plt.savefig('{}/latent_dependency_child.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'dependency of decoder on latent (child)': wandb.Image(fig)})
     
     """reconstruction"""
     # test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
