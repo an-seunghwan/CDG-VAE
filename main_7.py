@@ -45,7 +45,7 @@ except:
 wandb.init(
     project="(causal)VAE", 
     entity="anseunghwan",
-    tags=["GeneralizedLinearSEM", "fully-supervised", "Mutual-Information(posterior variance = 0)"],
+    tags=["GeneralizedLinearSEM", "fully-supervised", "Mutual-Information(fixed posterior variance)"],
 )
 #%%
 import argparse
@@ -65,6 +65,8 @@ def get_args(debug):
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
+    parser.add_argument("--std", default=0.01, type=float,
+                        help="standard deviation of posterior distribution")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
@@ -116,9 +118,9 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, _, _, _, _, align_latent, xhat = model(x_batch)
+            mean, epsilon, _, _, _, align_latent, xhat = model(x_batch)
             # for mutual information
-            _, _, _, _, logdet = model.encode(xhat, log_determinant=True)
+            mean_hat, _, _, _, logdet = model.encode(xhat, log_determinant=True)
             
             loss_ = []
             
@@ -129,6 +131,10 @@ def train(dataloader, model, config, optimizer, device):
             
             """KL-Divergence"""
             KL = torch.pow(mean, 2).sum(axis=1)
+            KL -= 2 * torch.log(model.std) * config["node"]
+            KL += torch.pow(model.std, 2) * config["node"]
+            # KL -= logvar.sum(axis=1)
+            # KL += torch.exp(logvar).sum(axis=1)
             KL -= config["node"]
             KL *= 0.5
             KL = KL.mean()
@@ -144,8 +150,12 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('align_last', align_last))
             
             """Mutual Information : posterior log-density"""
-            MI = torch.cat(logdet, dim=1).sum(axis=1) # log-determinant
+            MI = 0.5 * (torch.pow(epsilon.squeeze() - mean_hat, 2) / torch.pow(model.std, 2)).sum(axis=1)
+            # MI += 0.5 * (torch.pow(epsilon.squeeze() - mean_hat, 2) / torch.exp(logvar_hat)).sum(axis=1)
             MI += config["node"] / 2 * torch.log(torch.tensor(math.pi))
+            MI += torch.cat(logdet, dim=1).sum(axis=1) # log-determinant
+            MI += torch.log(model.std) * config["node"]
+            # MI = 0.5 * logvar_hat.sum(axis=1)
             MI = MI.mean()
             loss_.append(('mutual_info', MI))
             

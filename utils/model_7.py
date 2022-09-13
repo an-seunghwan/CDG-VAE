@@ -111,6 +111,7 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, config["node"] * config["node_dim"]),
         ).to(device)
+        self.std = torch.tensor(config["std"], dtype=torch.float32).to(device)
         
         """Causal Adjacency Matrix"""
         self.B = B.to(device) 
@@ -156,26 +157,33 @@ class VAE(nn.Module):
         latent = [x[0] for x in latent]
         return orig_latent, latent, logdet
     
-    def encode(self, input, log_determinant=False):
+    def encode(self, input, deterministic=False, log_determinant=False):
         mean = self.get_posterior(input)
         
         """Latent Generating Process"""
-        epsilon = mean.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
+        if deterministic:
+            epsilon = mean
+        else:
+            noise = torch.randn(input.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
+            epsilon = mean + self.std * noise
+        epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         orig_latent, latent, logdet = self.transform(epsilon, log_determinant=log_determinant)
-        
         return mean, epsilon, orig_latent, latent, logdet
     
-    def forward(self, input, log_determinant=False):
+    def forward(self, input, deterministic=False, log_determinant=False):
         """encoding"""
-        mean, epsilon, orig_latent, latent, logdet = self.encode(input, log_determinant=log_determinant)
+        mean, epsilon, orig_latent, latent, logdet = self.encode(input, 
+                                                                deterministic=deterministic,
+                                                                log_determinant=log_determinant)
         
         """decoding"""
         xhat = self.decoder(torch.cat(latent, dim=1))
         xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
         
         """Alignment"""
-        _, _, _, align_latent, _ = self.encode(input, log_determinant=log_determinant)
-        
+        _, _, _, align_latent, _ = self.encode(input, 
+                                                deterministic=True, 
+                                                log_determinant=log_determinant)
         return mean, epsilon, orig_latent, latent, logdet, align_latent, xhat
 #%%
 def main():
@@ -186,7 +194,8 @@ def main():
         "node_dim": 1, 
         "flow_num": 4,
         "inverse_loop": 100,
-        "scm": 'linear'
+        "scm": 'nonlinear',
+        "std": 0.01,
     }
     
     B = torch.zeros(config["node"], config["node"])
@@ -209,6 +218,13 @@ def main():
     assert align_latent[0].shape == (config["n"], config["node_dim"])
     assert len(align_latent) == config["node"]
     assert xhat.shape == (config["n"], config["image_size"], config["image_size"], 3)
+    
+    # deterministic behavior
+    out1 = model(batch, deterministic=False)
+    out2 = model(batch, deterministic=True)
+    assert (out1[0] - out2[0]).abs().mean() == 0 # mean
+    assert (torch.cat(out1[3], dim=1) - torch.cat(out2[3], dim=1)).abs().mean() != 0 # latent
+    assert (torch.cat(out1[5], dim=1) - torch.cat(out2[5], dim=1)).abs().mean() == 0 # align_latent
     
     inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(orig_latent, 1, dim=2)], 
                                                         model.inverse(latent))]).sum())
