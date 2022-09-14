@@ -34,12 +34,15 @@ class PlanarFlows(nn.Module):
         self.device = device
         self.alpha = torch.tensor(1, dtype=torch.float32).to(device) # parameter of ELU
         
-        self.w = [(nn.Parameter(torch.randn(self.input_dim, 1)).to(device))
-                  for _ in range(self.flow_num)]
-        self.b = [nn.Parameter((torch.randn(1, 1)).to(device))
-                  for _ in range(self.flow_num)]
-        self.u = [nn.Parameter((torch.randn(self.input_dim, 1)).to(device))
-                  for _ in range(self.flow_num)]
+        self.w = nn.ParameterList(
+            [(nn.Parameter(torch.randn(self.input_dim, 1)).to(device))
+            for _ in range(self.flow_num)])
+        self.b = nn.ParameterList(
+            [nn.Parameter((torch.randn(1, 1)).to(device))
+            for _ in range(self.flow_num)])
+        self.u = nn.ParameterList(
+            [nn.Parameter((torch.randn(self.input_dim, 1)).to(device))
+            for _ in range(self.flow_num)])
         
     def build_u(self, u_, w_):
         """sufficient condition to be invertible"""
@@ -95,8 +98,9 @@ class VAE(nn.Module):
         self.I_B_inv = torch.inverse(self.I - self.B)
         
         """Generalized Linear SEM: Invertible NN"""
-        self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
-                    for _ in range(config["node"])]
+        self.flows = nn.ModuleList(
+            [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
+            for _ in range(config["node"])])
         
         """decoder"""
         self.decoder = nn.Sequential(
