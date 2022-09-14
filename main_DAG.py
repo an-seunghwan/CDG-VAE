@@ -40,7 +40,7 @@ except:
     import wandb
 
 wandb.init(
-    project="(causal)VAE", 
+    project="(proposal)CausalVAE", 
     entity="anseunghwan",
     tags=["causal_discovery"]
 )
@@ -61,7 +61,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     wandb.config.update(config)
 
     set_random_seed(config["seed"])
