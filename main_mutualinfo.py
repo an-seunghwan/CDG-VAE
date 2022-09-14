@@ -27,9 +27,9 @@ from utils.viz import (
     viz_heatmap,
 )
 
-# from utils.model_0 import (
-#     VAE,
-# )
+from utils.model_mutualinfo import (
+    VAE,
+)
 #%%
 import sys
 import subprocess
@@ -43,9 +43,9 @@ except:
     import wandb
 
 wandb.init(
-    project="(causal)VAE", 
+    project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["GeneralizedLinearSEM", "fully-supervised", "Mutual-Information(without log-determinant)"],
+    tags=["Mutual-Information"],
 )
 #%%
 import argparse
@@ -54,8 +54,6 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--version', type=int, default=6, 
-                        help='model version')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
@@ -70,8 +68,6 @@ def get_args(debug):
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scale adjacency matrix with in-degree")
-    parser.add_argument("--scm", default='nonlinear', type=str,
-                        help="Structure of SCM, options: linear, nonlinear")
     
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
@@ -83,14 +79,12 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=1, type=float,
+    parser.add_argument('--beta', default=0.01, type=float,
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
-    parser.add_argument('--gamma', default=0.001, type=float,
+    parser.add_argument('--gamma', default=0.01, type=float,
                         help='weight of mutual information loss')
-    
-    parser.add_argument('--fig_show', default=False, type=bool)
     
     if debug:
         return parser.parse_args(args=[])
@@ -103,7 +97,6 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
-        'align_last': [], # for debugging
         'mutual_info': []
     }
     
@@ -118,8 +111,7 @@ def train(dataloader, model, config, optimizer, device):
             
             mean, logvar, epsilon, _, _, _, align_latent, xhat = model(x_batch)
             # for mutual information
-            mean_hat, logvar_hat = model.get_posterior(xhat)
-            _, _, logdet = model.transform(epsilon, log_determinant=True)
+            mean_hat, logvar_hat, _, _, _, logdet = model.encode(xhat, log_determinant=True)
             
             loss_ = []
             
@@ -142,15 +134,11 @@ def train(dataloader, model, config, optimizer, device):
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
             
-            # for debugging
-            align_last = y_hat.mean(axis=0)[-1]
-            loss_.append(('align_last', align_last))
-            
             """Mutual Information : posterior log-density"""
             MI = 0.5 * logvar_hat.sum(axis=1)
             MI += 0.5 * (torch.pow(epsilon.squeeze() - mean_hat, 2) / torch.exp(logvar_hat)).sum(axis=1)
             MI += config["node"] / 2 * torch.log(torch.tensor(math.pi))
-            # MI += torch.cat(logdet, dim=1).sum(axis=1) # log-determinant
+            MI += torch.cat(logdet, dim=1).sum(axis=1) # log-determinant
             MI = MI.mean()
             loss_.append(('mutual_info', MI))
             
@@ -235,11 +223,6 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
-    """import model"""
-    tmp = __import__("utils.model_{}".format(config["version"]), 
-                    fromlist=["utils.model_{}".format(config["version"])])
-    VAE = getattr(tmp, "VAE")
-    
     model = VAE(B, config, device) 
     model = model.to(device)
     
@@ -276,29 +259,19 @@ def main():
         plt.subplot(3, 3, i+1)
         plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
         plt.axis('off')
-    plt.savefig('./assets/image.png')
+    plt.savefig('./assets/recon.png')
     plt.close()
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format(config["version"]))
-    artifact = wandb.Artifact('model_{}'.format(config["version"]), 
+    torch.save(model.state_dict(), './assets/model_{}.pth'.format('mutualinfo'))
+    artifact = wandb.Artifact('model_{}'.format('mutualinfo'), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format(config["version"]))
-    artifact.add_file('./main_{}.py'.format(config["version"]))
-    artifact.add_file('./utils/model_{}.py'.format(config["version"]))
+    artifact.add_file('./assets/model_{}.pth'.format('mutualinfo'))
+    artifact.add_file('./main_{}.py'.format('mutualinfo'))
+    artifact.add_file('./utils/model_{}.py'.format('mutualinfo'))
     wandb.log_artifact(artifact)
-    
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], 0), type='model')
-    # artifact.metadata
-    # model_dir = artifact.download()
-    # model_ = VAE(B, config, device).to(device)
-    # if config["cuda"]:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"])))
-    # else:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"]), map_location=torch.device('cpu')))
     
     wandb.run.finish()
 #%%

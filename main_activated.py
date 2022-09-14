@@ -105,7 +105,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, _, _, align_latent, xhat = model(x_batch)
+            mean, logvar, _, _, _, _, align_latent, xhat = model(x_batch)
             
             loss_ = []
             
