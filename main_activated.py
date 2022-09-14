@@ -244,18 +244,18 @@ def main():
         plt.subplot(3, 3, i+1)
         plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
         plt.axis('off')
-    plt.savefig('./assets/image.png')
+    plt.savefig('./assets/recon.png')
     plt.close()
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format(config["version"]))
-    artifact = wandb.Artifact('model_{}'.format(config["version"]), 
+    torch.save(model.state_dict(), './assets/model_{}.pth'.format('activated'))
+    artifact = wandb.Artifact('model_{}'.format('activated'), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format(config["version"]))
-    artifact.add_file('./main_{}.py'.format(config["version"]))
-    artifact.add_file('./utils/model_{}.py'.format(config["version"]))
+    artifact.add_file('./assets/model_{}.pth'.format('activated'))
+    artifact.add_file('./main_{}.py'.format('activated'))
+    artifact.add_file('./utils/model_{}.py'.format('activated'))
     wandb.log_artifact(artifact)
     
     wandb.run.finish()
