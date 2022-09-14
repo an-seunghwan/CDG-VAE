@@ -35,13 +35,13 @@ class PlanarFlows(nn.Module):
         self.alpha = torch.tensor(1, dtype=torch.float32).to(device) # parameter of ELU
         
         self.w = nn.ParameterList(
-            [(nn.Parameter(torch.randn(self.input_dim, 1)).to(device))
+            [(nn.Parameter(torch.randn(self.input_dim, 1, device=device)))
             for _ in range(self.flow_num)])
         self.b = nn.ParameterList(
-            [nn.Parameter((torch.randn(1, 1)).to(device))
+            [nn.Parameter((torch.randn(1, 1, device=device)))
             for _ in range(self.flow_num)])
         self.u = nn.ParameterList(
-            [nn.Parameter((torch.randn(self.input_dim, 1)).to(device))
+            [nn.Parameter((torch.randn(self.input_dim, 1, device=device)))
             for _ in range(self.flow_num)])
         
     def build_u(self, u_, w_):
@@ -179,6 +179,11 @@ def main():
         
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
+    inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(orig_latent, 1, dim=2)], 
+                                                        model.inverse(latent))]).sum())
+    assert inverse_diff / (config["n"] * config["node"] * config["node_dim"]) < 1e-5
+    
+    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch, log_determinant=True)
     
     assert mean.shape == (config["n"], config["node"] * config["node_dim"])
@@ -200,10 +205,6 @@ def main():
     assert (out1[1] - out2[1]).abs().mean() == 0 # logvar
     assert (torch.cat(out1[4], dim=1) - torch.cat(out2[4], dim=1)).abs().mean() != 0 # latent
     assert (torch.cat(out1[6], dim=1) - torch.cat(out2[6], dim=1)).abs().mean() == 0 # align_latent
-    
-    inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(orig_latent, 1, dim=2)], 
-                                                        model.inverse(latent))]).sum())
-    assert inverse_diff / (config["n"] * config["node"] * config["node_dim"]) < 1e-5
     
     print("Model test pass!")
 #%%
