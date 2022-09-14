@@ -1,15 +1,14 @@
-project: (causal)VAE
-program: main_3.py
+project: (proposal)CausalVAE
+# program: main_activated.py
+program: main_mutualinfo.py
 method: grid
 metric:
   goal: minimize
   name: loss
 parameters:
-  # seed:
-  #   values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-  # node_dim:
-  #   values: [1]
   beta:
-    values: [0.1, 0.5, 1, 10]
+    values: [0.01, 0.1, 1, 10]
   lambda:
     values: [1, 5, 10]
+  gamma:
+    values: [0.01, 0.1, 1]
