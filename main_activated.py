@@ -26,9 +26,9 @@ from utils.viz import (
     viz_heatmap,
 )
 
-# from utils.model_0 import (
-#     VAE,
-# )
+from utils.model_activated import (
+    VAE,
+)
 #%%
 import sys
 import subprocess
@@ -42,9 +42,9 @@ except:
     import wandb
 
 wandb.init(
-    project="(causal)VAE", 
+    project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["GeneralizedLinearSEM", "fully-supervised"],
+    tags=["root_activated"],
 )
 #%%
 import argparse
@@ -53,8 +53,6 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--version', type=int, default=5, 
-                        help='model version')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
@@ -82,10 +80,8 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=10, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=10, type=float,
                         help='weight of label alignment loss')
-    
-    parser.add_argument('--fig_show', default=False, type=bool)
     
     if debug:
         return parser.parse_args(args=[])
@@ -98,7 +94,6 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
-        'align_last': [], # for debugging
     }
     
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
@@ -110,7 +105,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, orig_latent, latent, align_latent, xhat = model(x_batch)
+            mean, logvar, _, _, align_latent, xhat = model(x_batch)
             
             loss_ = []
             
@@ -132,10 +127,6 @@ def train(dataloader, model, config, optimizer, device):
             y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
-            
-            # for debugging
-            align_last = y_hat.mean(axis=0)[-1]
-            loss_.append(('align_last', align_last))
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
@@ -217,11 +208,6 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
-    """import model"""
-    tmp = __import__("utils.model_{}".format(config["version"]), 
-                    fromlist=["utils.model_{}".format(config["version"])])
-    VAE = getattr(tmp, "VAE")
-    
     model = VAE(B, config, device) 
     model = model.to(device)
     
@@ -271,16 +257,6 @@ def main():
     artifact.add_file('./main_{}.py'.format(config["version"]))
     artifact.add_file('./utils/model_{}.py'.format(config["version"]))
     wandb.log_artifact(artifact)
-    
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(causal)VAE/model_{}:v{}'.format(config["version"], 0), type='model')
-    # artifact.metadata
-    # model_dir = artifact.download()
-    # model_ = VAE(B, config, device).to(device)
-    # if config["cuda"]:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"])))
-    # else:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(config["version"]), map_location=torch.device('cpu')))
     
     wandb.run.finish()
 #%%
