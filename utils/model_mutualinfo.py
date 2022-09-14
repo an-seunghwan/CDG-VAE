@@ -5,29 +5,6 @@ import torch.nn.functional as F
 
 import numpy as np
 #%%
-class InvertiblePriorLinear(nn.Module):
-    """Invertible Prior for Linear case
-    Reference:
-    [1]: https://github.com/xwshen51/DEAR/blob/main/causal_model.py
-
-    Parameter:
-        p: mean and std parameter for scaling
-    """
-    def __init__(self, device='cpu'):
-        super(InvertiblePriorLinear, self).__init__()
-        self.p = nn.Parameter(torch.rand([2])).to(device)
-
-    def forward(self, eps, log_determinant=False):
-        o = self.p[0] * eps + self.p[1]
-        logdet = 0
-        if log_determinant:
-            logdet += torch.log(self.p[0].abs()).repeat(eps.size(0), 1)
-        return o, logdet
-    
-    def inverse(self, o):
-        eps = (o - self.p[1]) / self.p[0]
-        return eps
-#%%
 class PlanarFlows(nn.Module):
     """invertible transformation with ELU
     ELU: h(x) = 
@@ -118,16 +95,8 @@ class VAE(nn.Module):
         self.I_B_inv = torch.inverse(self.I - self.B)
         
         """Generalized Linear SEM: Invertible NN"""
-        if config["scm"] == "linear":
-            if config["node_dim"] != 1:
-                raise NotImplementedError("Linear SCM only supports node_dim=1")
-            self.flows = [InvertiblePriorLinear(device=device) 
-                          for _ in range(config["node"])]
-        elif config["scm"] == "nonlinear":
-            self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
-                        for _ in range(config["node"])]
-        else:
-            raise ValueError('Not supported SCM!')
+        self.flows = [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
+                    for _ in range(config["node"])]
         
         """decoder"""
         self.decoder = nn.Sequential(
@@ -196,7 +165,6 @@ def main():
         "node_dim": 1, 
         "flow_num": 4,
         "inverse_loop": 100,
-        "scm": 'linear'
     }
     
     B = torch.zeros(config["node"], config["node"])
