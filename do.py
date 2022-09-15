@@ -51,7 +51,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=10, 
+    parser.add_argument('--num', type=int, default=5, 
                         help='model version')
 
     if debug:
@@ -60,10 +60,11 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    #%%
+    config = vars(get_args(debug=False)) # default configuration
     
-    postfix = 'activated' # 10
-    # postfix = 'mutualinfo' # 6
+    postfix = 'activated'
+    # postfix = 'mutualinfo'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
@@ -174,10 +175,11 @@ def main():
         model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix), map_location=torch.device('cpu')))
     
     model.eval()
-    
+    #%%
     """latent space (conditional intervention range)"""
     epsilons = []
     orig_latents = []
+    latents = []
     iter_test = iter(dataloader)
     for x_batch, y_batch in tqdm.tqdm(iter_test):
         if config["cuda"]:
@@ -187,10 +189,12 @@ def main():
         mean, logvar, epsilon, orig_latent, latent, _ = model.encode(x_batch, deterministic=True)
         epsilons.append(epsilon.squeeze())
         orig_latents.append(orig_latent.squeeze())
+        latents.append(torch.cat(latent, dim=1))
     epsilons = torch.cat(epsilons, dim=0)
     epsilons = epsilons.detach().cpu().numpy()
     orig_latents = torch.cat(orig_latents, dim=0)
     orig_latents = orig_latents.detach().cpu().numpy()
+    latents = torch.cat(latents, dim=0)
     
     # orig_latents_corr = np.abs(np.corrcoef(orig_latents.T).round(2))
     # fig = plt.figure(figsize=(5, 4))
@@ -224,60 +228,37 @@ def main():
     plt.close()
     
     wandb.log({'latent space (conditional intervention range)': wandb.Image(fig)})
+    #%%
+    """causal latent max-min difference"""
+    causal_min = np.quantile(orig_latents, q=0.05, axis=0)
+    causal_max = np.quantile(orig_latents, q=0.95, axis=0)
     
-    # fig, ax = plt.subplots(2, 5, figsize=(10, 5))
-    # for i, k in enumerate(np.linspace(-2, 4, 10)):
-    #     z = [torch.tensor([[0]], dtype=torch.float32),
-    #         torch.tensor([[0]], dtype=torch.float32),
-    #         torch.tensor([[k]], dtype=torch.float32),
-    #         torch.tensor([[0]], dtype=torch.float32)]
-    #     z = list(map(lambda x, layer: layer(x), z, model.flows))
-    #     z = [z_[0] for z_ in z]
-        
-    #     do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
-    #     ax.flatten()[i].imshow((do_xhat.detach().cpu().numpy() + 1) / 2)
+    transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.05, axis=0)
+    transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.95, axis=0)
+    
+    fig, ax = plt.subplots(1, 2, figsize=(6, 3))
+    ax[0].bar(np.arange(config["node"]), np.abs(causal_max - causal_min),
+            width=0.2)
+    ax[0].set_xticks(np.arange(config["node"]))
+    ax[0].set_xticklabels(dataset.name)
+    ax[0].set_ylabel('latent (intervened)', fontsize=12)
+    ax[1].bar(np.arange(config["node"]), np.abs(transformed_causal_max - transformed_causal_min),
+            width=0.2)
+    ax[1].set_xticks(np.arange(config["node"]))
+    ax[1].set_xticklabels(dataset.name)
+    ax[1].set_ylabel('transformed latent', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig('{}/latent_maxmin.png'.format(model_dir), bbox_inches='tight')
     # plt.show()
-    # plt.close()
+    plt.close()
     
-    # #
-    # points = [[2, -1.5], [2, 3], [0, 1], [0, 3]]
-    # plt.scatter(epsilons[:, 0], epsilons[:, 2], s=2, alpha=0.5)
-    # plt.scatter([p[0] for p in points], [p[1] for p in points])
-    # plt.xlabel('$\epsilon_1$', fontsize=15)
-    # plt.ylabel('$\epsilon_3$', fontsize=15)
-    # plt.show()
-    # plt.close()
-    
-    # fig, ax = plt.subplots(2, 2, figsize=(5, 5))    
-    # do_xhats = []
-    # for i, p in enumerate(points):
-    #     z = [torch.tensor([[0]], dtype=torch.float32),
-    #         torch.tensor([[0]], dtype=torch.float32),
-    #         torch.tensor([[0]], dtype=torch.float32),
-    #         torch.tensor([[0]], dtype=torch.float32)]
-    #     z[0] = torch.tensor([[p[0]]], dtype=torch.float32)
-    #     z[2] = torch.tensor([[p[1]]], dtype=torch.float32)
-    #     z = list(map(lambda x, layer: layer(x), z, model.flows))
-    #     z = [z_[0] for z_ in z]
-        
-    #     do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
-    #     ax.flatten()[i].imshow((do_xhat.detach().cpu().numpy() + 1) / 2)
-    #     do_xhats.append(do_xhat)
-    # plt.show()
-    # plt.close()
-    
-    # fig, ax = plt.subplots(1, 2, figsize=(5, 5))    
-    # ax.flatten()[0].imshow(((do_xhats[0] - do_xhats[1]).detach().cpu().numpy() + 1) / 2)
-    # ax.flatten()[1].imshow(((do_xhats[2] - do_xhats[3]).detach().cpu().numpy() + 1) / 2)
-    # plt.show()
-    # plt.close()
-    
+    wandb.log({'causal latent max-min difference': wandb.Image(fig)})
+    #%%
     """
-    get intervention range 
     & posterior conditional variance
     & cross entropy of supervised loss
     """
-    latents = []
     logvars = []
     align_latents = []
     iter_test = iter(dataloader)
@@ -286,16 +267,9 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
             
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch)
-        latents.append(torch.cat(latent, dim=1))
+        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
         logvars.append(logvar)
         align_latents.append(torch.cat(align_latent, dim=1))
-        
-    latents = torch.cat(latents, dim=0)
-    causal_min = np.quantile(latents.detach().numpy(), q=0.05, axis=0)
-    causal_max = np.quantile(latents.detach().numpy(), q=0.95, axis=0)
-    # causal_min = torch.min(causal_latents, axis=0).values.detach().numpy()
-    # causal_max = torch.max(causal_latents, axis=0).values.detach().numpy()
     
     logvars = torch.cat(logvars, dim=0)
     fig = plt.figure(figsize=(5, 3))
@@ -330,22 +304,7 @@ def main():
     plt.close()
     
     wandb.log({'cross entropy of supervised loss': wandb.Image(fig)})
-    
-    """causal latent max-min difference"""
-    fig = plt.figure(figsize=(5, 3))
-    plt.bar(np.arange(config["node"]), np.abs(causal_max - causal_min),
-            width=0.2)
-    plt.xticks(np.arange(config["node"]), dataset.name)
-    # plt.xlabel('node', fontsize=12)
-    plt.ylabel('latent', fontsize=12)
-    
-    plt.tight_layout()
-    plt.savefig('{}/latent_maxmin.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
-    plt.close()
-    
-    wandb.log({'causal latent max-min difference': wandb.Image(fig)})
-    
+    #%%
     """dependency of decoder on latent"""
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
     iter_test = iter(dataloader)
@@ -407,7 +366,7 @@ def main():
     plt.close()
     
     wandb.log({'dependency of decoder on latent (child)': wandb.Image(fig)})
-    
+    #%%
     """reconstruction"""
     # test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
@@ -443,7 +402,7 @@ def main():
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
-    
+    #%%
     """reconstruction with do-intervention"""
     for do_index, (min, max) in enumerate(zip(causal_min, causal_max)):
         fig, ax = plt.subplots(3, 3, figsize=(5, 5))
@@ -478,9 +437,56 @@ def main():
         plt.close()
         
         wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
-    
+    #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
+#%%
+# fig, ax = plt.subplots(2, 5, figsize=(10, 5))
+# for i, k in enumerate(np.linspace(-2, 4, 10)):
+#     z = [torch.tensor([[0]], dtype=torch.float32),
+#         torch.tensor([[0]], dtype=torch.float32),
+#         torch.tensor([[k]], dtype=torch.float32),
+#         torch.tensor([[0]], dtype=torch.float32)]
+#     z = list(map(lambda x, layer: layer(x), z, model.flows))
+#     z = [z_[0] for z_ in z]
+    
+#     do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
+#     ax.flatten()[i].imshow((do_xhat.detach().cpu().numpy() + 1) / 2)
+# plt.show()
+# plt.close()
+
+# #
+# points = [[2, -1.5], [2, 3], [0, 1], [0, 3]]
+# plt.scatter(epsilons[:, 0], epsilons[:, 2], s=2, alpha=0.5)
+# plt.scatter([p[0] for p in points], [p[1] for p in points])
+# plt.xlabel('$\epsilon_1$', fontsize=15)
+# plt.ylabel('$\epsilon_3$', fontsize=15)
+# plt.show()
+# plt.close()
+
+# fig, ax = plt.subplots(2, 2, figsize=(5, 5))    
+# do_xhats = []
+# for i, p in enumerate(points):
+#     z = [torch.tensor([[0]], dtype=torch.float32),
+#         torch.tensor([[0]], dtype=torch.float32),
+#         torch.tensor([[0]], dtype=torch.float32),
+#         torch.tensor([[0]], dtype=torch.float32)]
+#     z[0] = torch.tensor([[p[0]]], dtype=torch.float32)
+#     z[2] = torch.tensor([[p[1]]], dtype=torch.float32)
+#     z = list(map(lambda x, layer: layer(x), z, model.flows))
+#     z = [z_[0] for z_ in z]
+    
+#     do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
+#     ax.flatten()[i].imshow((do_xhat.detach().cpu().numpy() + 1) / 2)
+#     do_xhats.append(do_xhat)
+# plt.show()
+# plt.close()
+
+# fig, ax = plt.subplots(1, 2, figsize=(5, 5))    
+# ax.flatten()[0].imshow(((do_xhats[0] - do_xhats[1]).detach().cpu().numpy() + 1) / 2)
+# ax.flatten()[1].imshow(((do_xhats[2] - do_xhats[3]).detach().cpu().numpy() + 1) / 2)
+# plt.show()
+# plt.close()
 #%%
