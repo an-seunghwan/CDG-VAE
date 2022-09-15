@@ -203,8 +203,8 @@ def main():
     model = VAE(B, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
-        
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
+    
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
     inverse_diff = torch.abs(sum([x - y for x, y in zip(torch.split(orig_latent, 1, dim=1), 
                                                         model.inverse(latent))]).sum())

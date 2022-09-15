@@ -78,7 +78,7 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=10, type=float,
+    parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
@@ -94,6 +94,11 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
+        # for debugging
+        'posterior_variance1': [],
+        'posterior_variance2': [],
+        'posterior_variance3': [],
+        'posterior_variance4': [],
     }
     
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
@@ -127,6 +132,11 @@ def train(dataloader, model, config, optimizer, device):
             y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
+            
+            ### posterior variance: for debugging
+            logvar_ = logvar.mean(axis=0)
+            for i in range(config["node"]):
+                loss_.append(('posterior_variance{}'.format(i+1), torch.exp(logvar_[i])))
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
