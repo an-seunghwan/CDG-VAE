@@ -126,7 +126,7 @@ class VAE(nn.Module):
                 [InvertiblePriorLinear(device=device) for _ in range(config["node"])])
         elif config["scm"] == "nonlinear":
             self.flows = nn.ModuleList(
-                [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) for _ in range(config["node"])])
+                [PlanarFlows(1, config["flow_num"], config["inverse_loop"], device) for _ in range(config["node"])])
         else:
             raise ValueError('Not supported SCM!')
         
