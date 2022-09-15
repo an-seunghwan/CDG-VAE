@@ -1,14 +1,14 @@
 project: (proposal)CausalVAE
-# program: main_activated.py
-program: main_mutualinfo.py
+program: main_activated.py
+# program: main_mutualinfo.py
 method: grid
 metric:
   goal: minimize
   name: loss
 parameters:
+  scm:
+    values: ['linear', 'nonlinear']
   beta:
-    values: [0.01, 0.1, 1, 10]
+    values: [0.1, 1, 5, 10]
   lambda:
-    values: [1, 5, 10]
-  gamma:
-    values: [0.01, 0.1, 1]
+    values: [5, 10]

@@ -404,7 +404,7 @@ def main():
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     #%%
     """reconstruction with do-intervention"""
-    for do_index, (min, max) in enumerate(zip(causal_min, causal_max)):
+    for do_index, (min, max) in enumerate(zip(transformed_causal_min, transformed_causal_max)):
         fig, ax = plt.subplots(3, 3, figsize=(5, 5))
         
         for k, do_value in enumerate(np.linspace(min, max, 9)):
