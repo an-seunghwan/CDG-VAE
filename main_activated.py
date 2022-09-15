@@ -56,7 +56,7 @@ def get_args(debug):
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--scm", default='linear', type=str,
+    parser.add_argument("--scm", default='nonlinear', type=str,
                         help="SCM structure options: linear or nonlinear")
     parser.add_argument("--flow_num", default=1, type=int,
                         help="the number of invertible NN flow")
@@ -78,9 +78,9 @@ def get_args(debug):
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=0.1, type=float,
+    parser.add_argument('--beta', default=10, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=10, type=float,
                         help='weight of label alignment loss')
     
     if debug:
