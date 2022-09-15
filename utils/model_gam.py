@@ -15,7 +15,7 @@ class InvertiblePriorLinear(nn.Module):
     """
     def __init__(self, device='cpu'):
         super(InvertiblePriorLinear, self).__init__()
-        self.p = nn.Parameter(torch.rand([2])).to(device)
+        self.p = nn.Parameter(torch.rand([2]) * 0.1).to(device)
 
     def forward(self, eps, log_determinant=False):
         o = self.p[0] * eps + self.p[1]
@@ -58,13 +58,13 @@ class PlanarFlows(nn.Module):
         self.alpha = torch.tensor(1, dtype=torch.float32).to(device) # parameter of ELU
         
         self.w = nn.ParameterList(
-            [(nn.Parameter(torch.randn(self.input_dim, 1, device=device)))
+            [(nn.Parameter(torch.randn(self.input_dim, 1, device=device) * 0.1))
             for _ in range(self.flow_num)])
         self.b = nn.ParameterList(
-            [nn.Parameter((torch.randn(1, 1, device=device)))
+            [nn.Parameter((torch.randn(1, 1, device=device) * 0.1))
             for _ in range(self.flow_num)])
         self.u = nn.ParameterList(
-            [nn.Parameter((torch.randn(self.input_dim, 1, device=device)))
+            [nn.Parameter((torch.randn(self.input_dim, 1, device=device) * 0.1))
             for _ in range(self.flow_num)])
         
     def build_u(self, u_, w_):
@@ -179,7 +179,7 @@ class VAE(nn.Module):
         
         """decoding"""
         xhat = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = torch.stack(xhat, dim=2).sum(axis=-1)
+        xhat = torch.tanh(torch.stack(xhat, dim=2).sum(axis=-1)) # generalized addictive model (GAM)
         xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
         
         """Alignment"""
