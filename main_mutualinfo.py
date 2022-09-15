@@ -6,7 +6,6 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 import pandas as pd
 import tqdm
-import math
 from PIL import Image
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
@@ -29,6 +28,7 @@ from utils.viz import (
 
 from utils.model_mutualinfo import (
     VAE,
+    Discriminator
 )
 #%%
 import sys
@@ -57,8 +57,8 @@ def get_args(debug):
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--node_dim", default=1, type=int,
-                        help="dimension of each node")
+    parser.add_argument("--scm", default='nonlinear', type=str,
+                        help="SCM structure options: linear or nonlinear")
     parser.add_argument("--flow_num", default=1, type=int,
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,
@@ -67,7 +67,7 @@ def get_args(debug):
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
-                        help="If True, scale adjacency matrix with in-degree")
+                        help="If True, scaling adjacency matrix with in-degree")
     
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
@@ -78,27 +78,38 @@ def get_args(debug):
                         help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
+    parser.add_argument('--lr_D', default=0.0001, type=float,
+                        help='learning rate for discriminator')
     
-    parser.add_argument('--beta', default=0.01, type=float,
+    parser.add_argument('--beta', default=10, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=10, type=float,
                         help='weight of label alignment loss')
-    parser.add_argument('--gamma', default=0.01, type=float,
-                        help='weight of mutual information loss')
+    parser.add_argument('--gamma', default=10, type=float,
+                        help='weight of f-divergence (lower bound of information)')
     
     if debug:
         return parser.parse_args(args=[])
     else:    
         return parser.parse_args()
 #%%
-def train(dataloader, model, config, optimizer, device):
+def permute_dims(z, device):
+    B, _ = z.size()
+    perm = torch.randperm(B).to(device)
+    perm_z = z[perm]
+    return perm_z
+
+def train(dataloader, model, discriminator, config, optimizer, optimizer_D, device):
     logs = {
         'loss': [], 
         'recon': [],
         'KL': [],
         'alignment': [],
-        'mutual_info': []
+        'MutualInfo': [],
     }
+    # for debugging
+    for i in range(config["node"]):
+        logs['posterior_variance{}'.format(i+1)] = []
     
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
         
@@ -107,12 +118,7 @@ def train(dataloader, model, config, optimizer, device):
             y_batch = y_batch.cuda()
         
         with torch.autograd.set_detect_anomaly(True):    
-            optimizer.zero_grad()
-            
             mean, logvar, epsilon, _, _, _, align_latent, xhat = model(x_batch)
-            # for mutual information
-            mean_hat, logvar_hat = model.get_posterior(xhat)
-            # mean_hat, logvar_hat, _, _, _, logdet = model.encode(xhat, log_determinant=True)
             
             loss_ = []
             
@@ -135,21 +141,29 @@ def train(dataloader, model, config, optimizer, device):
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
             
-            """Mutual Information : posterior log-density"""
-            MI = 0.5 * logvar_hat.sum(axis=1)
-            MI += 0.5 * (torch.pow(epsilon.squeeze() - mean_hat, 2) / torch.exp(logvar_hat)).sum(axis=1)
-            MI += config["node"] / 2 * torch.log(torch.tensor(math.pi))
-            # MI += torch.cat(logdet, dim=1).sum(axis=1) # log-determinant
-            MI = MI.mean()
-            loss_.append(('mutual_info', MI))
+            """mutual information"""
+            D_joint = discriminator(x_batch, epsilon)
+            epsilon_perm = permute_dims(epsilon, device)
+            D_marginal = discriminator(x_batch, epsilon_perm)
+            MI = -(D_joint.mean() - torch.exp(D_marginal - 1).mean())
+            loss_.append(('MutualInfo', MI))
+            
+            ### posterior variance: for debugging
+            logvar_ = logvar.mean(axis=0)
+            for i in range(config["node"]):
+                loss_.append(('posterior_variance{}'.format(i+1), torch.exp(logvar_[i])))
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
             loss += config["gamma"] * MI
             loss_.append(('loss', loss))
             
-            loss.backward()
+            optimizer.zero_grad()
+            optimizer_D.zero_grad()
+            loss.backward(retain_graph=True)
+            MI.backward()
             optimizer.step()
+            optimizer_D.step()
             
         """accumulate losses"""
         for x, y in loss_:
@@ -158,7 +172,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -226,17 +240,25 @@ def main():
     
     model = VAE(B, config, device) 
     model = model.to(device)
+    discriminator = Discriminator(config, device)
+    discriminator = discriminator.to(device)
     
     optimizer = torch.optim.Adam(
         model.parameters(), 
         lr=config["lr"]
     )
+    optimizer_D = torch.optim.Adam(
+        discriminator.parameters(), 
+        lr=config["lr_D"]
+    )
     
     wandb.watch(model, log_freq=100) # tracking gradients
-    model.train()
+    wandb.watch(discriminator, log_freq=100) # tracking gradients
+    print(model.train())
+    print(discriminator.train())
     
     for epoch in range(config["epochs"]):
-        logs, xhat = train(dataloader, model, config, optimizer, device)
+        logs, xhat = train(dataloader, model, discriminator, config, optimizer, optimizer_D, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
