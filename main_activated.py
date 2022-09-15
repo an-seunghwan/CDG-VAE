@@ -80,7 +80,7 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=10, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=10, type=float,
+    parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
     
     if debug:
