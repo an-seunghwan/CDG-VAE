@@ -56,8 +56,8 @@ def get_args(debug):
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--node_dim", default=1, type=int,
-                        help="dimension of each node")
+    parser.add_argument("--scm", default='linear', type=str,
+                        help="SCM structure options: linear or nonlinear")
     parser.add_argument("--flow_num", default=1, type=int,
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,

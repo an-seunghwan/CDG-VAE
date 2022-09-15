@@ -5,6 +5,29 @@ import torch.nn.functional as F
 
 import numpy as np
 #%%
+class InvertiblePriorLinear(nn.Module):
+    """Invertible Prior for Linear case
+    Reference:
+    [1]: https://github.com/xwshen51/DEAR/blob/main/causal_model.py
+
+    Parameter:
+        p: mean and std parameter for scaling
+    """
+    def __init__(self, device='cpu'):
+        super(InvertiblePriorLinear, self).__init__()
+        self.p = nn.Parameter(torch.rand([2])).to(device)
+
+    def forward(self, eps, log_determinant=False):
+        o = self.p[0] * eps + self.p[1]
+        logdet = 0
+        if log_determinant:
+            logdet += torch.log(self.p[0].abs()).repeat(eps.size(0), 1)
+        return o, logdet
+    
+    def inverse(self, o):
+        eps = (o - self.p[1]) / self.p[0]
+        return eps
+#%%
 class PlanarFlows(nn.Module):
     """invertible transformation with ELU
     ELU: h(x) = 
@@ -89,7 +112,7 @@ class VAE(nn.Module):
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
-            nn.Linear(300, config["node"] * config["node_dim"] * 2),
+            nn.Linear(300, config["node"] * 2),
         ).to(device)
         
         """Causal Adjacency Matrix"""
@@ -98,13 +121,18 @@ class VAE(nn.Module):
         self.I_B_inv = torch.inverse(self.I - self.B)
         
         """Generalized Linear SEM: Invertible NN"""
-        self.flows = nn.ModuleList(
-            [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) 
-            for _ in range(config["node"])])
+        if config["scm"] == "linear":
+            self.flows = nn.ModuleList(
+                [InvertiblePriorLinear(device=device) for _ in range(config["node"])])
+        elif config["scm"] == "nonlinear":
+            self.flows = nn.ModuleList(
+                [PlanarFlows(config["node_dim"], config["flow_num"], config["inverse_loop"], device) for _ in range(config["node"])])
+        else:
+            raise ValueError('Not supported SCM!')
         
         """decoder"""
         self.decoder = nn.Sequential(
-            nn.Linear(config["node"] * config["node_dim"], 300),
+            nn.Linear(config["node"], 300),
             nn.ELU(),
             nn.Linear(300, 300),
             nn.ELU(),
@@ -117,14 +145,14 @@ class VAE(nn.Module):
         return inverse_latent
     
     def get_posterior(self, input):
-        h = self.encoder(nn.Flatten()(input)) # [batch, node * node_dim * 2]
-        mean, logvar = torch.split(h, self.config["node"] * self.config["node_dim"], dim=1)
+        h = self.encoder(nn.Flatten()(input)) # [batch, node * 2]
+        mean, logvar = torch.split(h, self.config["node"], dim=1)
         return mean, logvar
     
     def transform(self, input, log_determinant=False):
-        latent = torch.matmul(input, self.I_B_inv) # [batch, node_dim, node], input = epsilon (exogenous variables)
+        latent = torch.matmul(input, self.I_B_inv) # [batch, node], input = epsilon (exogenous variables)
         orig_latent = latent.clone()
-        latent = [x.squeeze(dim=2) for x in torch.split(latent, 1, dim=2)] # [batch, node_dim] x node
+        latent = torch.split(latent, 1, dim=1) # [batch, 1] x node
         latent = list(map(lambda x, layer: layer(x, log_determinant=log_determinant), latent, self.flows)) # input = (I-B^T)^{-1} * epsilon
         logdet = [x[1] for x in latent]
         latent = [x[0] for x in latent]
@@ -137,9 +165,8 @@ class VAE(nn.Module):
         if deterministic:
             epsilon = mean
         else:
-            noise = torch.randn(input.size(0), self.config["node"] * self.config["node_dim"]).to(self.device) 
+            noise = torch.randn(input.size(0), self.config["node"]).to(self.device) 
             epsilon = mean + torch.exp(logvar / 2) * noise
-        epsilon = epsilon.view(-1, self.config["node_dim"], self.config["node"]).contiguous()
         orig_latent, latent, logdet = self.transform(epsilon, log_determinant=log_determinant)
         
         return mean, logvar, epsilon, orig_latent, latent, logdet
@@ -166,9 +193,9 @@ def main():
         "image_size": 64,
         "n": 64,
         "node": 4,
-        "node_dim": 1, 
         "flow_num": 4,
         "inverse_loop": 100,
+        "scm": 'linear',
     }
     
     B = torch.zeros(config["node"], config["node"])
@@ -179,22 +206,22 @@ def main():
         
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
-    inverse_diff = torch.abs(sum([x - y for x, y in zip([x.squeeze(dim=2) for x in torch.split(orig_latent, 1, dim=2)], 
+    inverse_diff = torch.abs(sum([x - y for x, y in zip(torch.split(orig_latent, 1, dim=1), 
                                                         model.inverse(latent))]).sum())
-    assert inverse_diff / (config["n"] * config["node"] * config["node_dim"]) < 1e-5
+    assert inverse_diff / (config["n"] * config["node"]) < 1e-5
     
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch, log_determinant=True)
     
-    assert mean.shape == (config["n"], config["node"] * config["node_dim"])
-    assert logvar.shape == (config["n"], config["node"] * config["node_dim"])
-    assert epsilon.shape == (config["n"], config["node_dim"], config["node"])
-    assert orig_latent.shape == (config["n"], config["node_dim"], config["node"])
-    assert latent[0].shape == (config["n"], config["node_dim"])
+    assert mean.shape == (config["n"], config["node"])
+    assert logvar.shape == (config["n"], config["node"])
+    assert epsilon.shape == (config["n"], config["node"])
+    assert orig_latent.shape == (config["n"], config["node"])
+    assert latent[0].shape == (config["n"], 1)
     assert len(latent) == config["node"]
     assert logdet[0].shape == (config["n"], 1)
     assert len(logdet) == config["node"]
-    assert align_latent[0].shape == (config["n"], config["node_dim"])
+    assert align_latent[0].shape == (config["n"], 1)
     assert len(align_latent) == config["node"]
     assert xhat.shape == (config["n"], config["image_size"], config["image_size"], 3)
     
