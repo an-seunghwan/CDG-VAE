@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+from PIL import Image
 import math
 import numpy as np
 import pandas as pd 
@@ -98,4 +99,20 @@ for pendulum_angle in tqdm.tqdm(pendulum_angle_list):
 # label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
 # label.std(axis=0).round(2)
 # label.mean(axis=0).round(2)
+#%%
+# train_imgs = [x for x in os.listdir('./causal_data/pendulum/train') if x.endswith('.png')]
+# img = np.array(Image.open('./causal_data/pendulum/train/' + train_imgs[0]).resize((64, 64)))[:, :, :3].astype(float)
+# img /= 255
+# # light
+# mask = np.zeros((64, 64, 3))
+# mask[:20, :] = 1
+# plt.imshow(img * mask)
+# # angle
+# mask = np.zeros((64, 64, 3))
+# mask[20:51, :] = 1
+# plt.imshow(img * mask)
+# # shadow
+# mask = np.zeros((64, 64, 3))
+# mask[51:, :] = 1
+# plt.imshow(img * mask)
 #%%
