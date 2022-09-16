@@ -134,9 +134,9 @@ def train(dataloader, model, config, optimizer, device):
             loss_.append(('alignment', align))
             
             ### posterior variance: for debugging
-            logvar_ = logvar.mean(axis=0)
+            var_ = torch.exp(logvar).mean(axis=0)
             for i in range(config["node"]):
-                loss_.append(('posterior_variance{}'.format(i+1), torch.exp(logvar_[i])))
+                loss_.append(('posterior_variance{}'.format(i+1), var_[i]))
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
@@ -152,7 +152,7 @@ def train(dataloader, model, config, optimizer, device):
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
