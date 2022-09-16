@@ -15,7 +15,7 @@ class InvertiblePriorLinear(nn.Module):
     """
     def __init__(self, device='cpu'):
         super(InvertiblePriorLinear, self).__init__()
-        self.p = nn.Parameter(torch.rand([2]) * 0.1).to(device)
+        self.p = nn.Parameter(torch.rand([2], device=device) * 0.1)
 
     def forward(self, eps, log_determinant=False):
         o = self.p[0] * eps + self.p[1]
