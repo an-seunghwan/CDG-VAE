@@ -82,8 +82,8 @@ def get_args(debug):
                         help='observation noise')
     parser.add_argument('--lambda', default=10, type=float,
                         help='weight of label alignment loss')
-    parser.add_argument('--alpha', default=1, type=float,
-                        help='weight of L1 loss on GAM')
+    # parser.add_argument('--alpha', default=10, type=float,
+    #                     help='weight of L1 loss on GAM')
     
     if debug:
         return parser.parse_args(args=[])
@@ -96,7 +96,7 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
-        'L1': [],
+        # 'L1': [],
     }
     # for debugging
     for i in range(config["node"]):
@@ -134,14 +134,23 @@ def train(dataloader, model, config, optimizer, device):
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
             
-            """L1 loss on GAM"""
-            # L1 = sum([torch.abs(x).sum(axis=1) for x in xhat_separated]).mean()
-            # L1 = sum([torch.abs(x).mean() for x in xhat_separated])
-            L1 = -(xhat_separated[0] - xhat_separated[1]).abs().mean()
-            L1 += -(xhat_separated[1] - xhat_separated[2]).abs().mean()
-            L1 += -(xhat_separated[2] - xhat_separated[3]).abs().mean()
-            L1 += -(xhat_separated[3] - xhat_separated[0]).abs().mean()
-            loss_.append(('L1', L1))
+            # """L1 loss on GAM"""
+            # # L1 = sum([torch.abs(x).sum(axis=1) for x in xhat_separated]).mean()
+            # # L1 = sum([torch.abs(x).mean() for x in xhat_separated])
+            # # L1 = -(xhat_separated[0] - xhat_separated[1]).pow(2).mean()
+            # # L1 += -(xhat_separated[1] - xhat_separated[2]).pow(2).mean()
+            # # L1 += -(xhat_separated[2] - xhat_separated[3]).pow(2).mean()
+            # # L1 += -(xhat_separated[3] - xhat_separated[0]).pow(2).mean()
+            # # L1 = (xhat_separated[0] @ xhat_separated[1].t()).pow(2).mean()
+            # # L1 += (xhat_separated[1] @ xhat_separated[2].t()).pow(2).mean()
+            # # L1 += (xhat_separated[2] @ xhat_separated[3].t()).pow(2).mean()
+            # # L1 += (xhat_separated[3] @ xhat_separated[0].t()).pow(2).mean()
+            # xhat_separated = [x.view(mean.size(0), config["image_size"] * config["image_size"], 3) for x in xhat_separated]
+            # L1 = (xhat_separated[0] * xhat_separated[1]).sum(axis=-1).pow(2).mean()
+            # L1 += (xhat_separated[1] * xhat_separated[2]).sum(axis=-1).pow(2).mean()
+            # L1 += (xhat_separated[2] * xhat_separated[3]).sum(axis=-1).pow(2).mean()
+            # L1 += (xhat_separated[3] * xhat_separated[0]).sum(axis=-1).pow(2).mean()
+            # loss_.append(('L1', L1))
             
             ### posterior variance: for debugging
             var_ = torch.exp(logvar).mean(axis=0)
@@ -150,7 +159,7 @@ def train(dataloader, model, config, optimizer, device):
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
-            loss += config["alpha"] * L1
+            # loss += config["alpha"] * L1
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -229,7 +238,25 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
-    model = VAE(B, config, device) 
+    """Decoder masking"""
+    mask = []
+    # light
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[:20, ...] = 1
+    mask.append(m)
+    # angle
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[20:51, ...] = 1
+    mask.append(m)
+    # shadow
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+    
+    model = VAE(B, mask, config, device) 
     model = model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -297,10 +324,11 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-# xhats = [x.view(mean.size(0), model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
+# xhat = [x.view(-1, config["image_size"], config["image_size"], 3) for x in xhat_separated]
+# xhat = [x * m for x, m in zip(xhat, model.mask)] # masking
 # fig, ax = plt.subplots(2, 2, figsize=(5, 5))
 # for i in range(config["node"]):
-#     ax.flatten()[i].imshow(xhats[0][i].detach().cpu().numpy())
+#     ax.flatten()[i].imshow(xhat[i][0].detach().cpu().numpy())
 
 # plt.tight_layout()
 # plt.savefig('gam.png', bbox_inches='tight')

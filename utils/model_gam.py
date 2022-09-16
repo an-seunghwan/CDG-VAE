@@ -100,10 +100,11 @@ class PlanarFlows(nn.Module):
         return h, logdet
 #%%
 class VAE(nn.Module):
-    def __init__(self, B, config, device):
+    def __init__(self, B, mask, config, device):
         super(VAE, self).__init__()
         
         self.config = config
+        self.mask = mask
         self.device = device
         
         """encoder"""
@@ -179,8 +180,9 @@ class VAE(nn.Module):
         
         """decoding"""
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = torch.tanh(torch.stack(xhat_separated, dim=2).sum(axis=-1)) # generalized addictive model (GAM)
-        xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
+        xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
+        xhat = [x * m for x, m in zip(xhat, self.mask)] # masking
+        xhat = torch.tanh(sum(xhat)) # generalized addictive model (GAM)
         
         """Alignment"""
         _, _, _, _, align_latent, _ = self.encode(input, 
@@ -192,7 +194,7 @@ class VAE(nn.Module):
 def main():
     config = {
         "image_size": 64,
-        "n": 64,
+        "n": 10,
         "node": 4,
         "flow_num": 4,
         "inverse_loop": 100,
@@ -201,7 +203,21 @@ def main():
     
     B = torch.zeros(config["node"], config["node"])
     B[:2, 2:] = 1
-    model = VAE(B, config, 'cpu')
+    mask = []
+    # light
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[:20, ...] = 1
+    mask.append(m)
+    # angle
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[20:51, ...] = 1
+    mask.append(m)
+    # shadow
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+    
+    model = VAE(B, mask, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
