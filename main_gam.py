@@ -94,12 +94,10 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
-        # for debugging
-        'posterior_variance1': [],
-        'posterior_variance2': [],
-        'posterior_variance3': [],
-        'posterior_variance4': [],
     }
+    # for debugging
+    for i in range(config["node"]):
+        logs['posterior_variance{}'.format(i+1)] = []
     
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
         
