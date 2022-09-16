@@ -25,11 +25,7 @@ from utils.viz import (
     viz_graph,
     viz_heatmap,
 )
-
-from utils.model_activated import (
-    VAE,
-)
-#%%
+ #%%
 import sys
 import subprocess
 try:
@@ -51,7 +47,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=5, 
+    parser.add_argument('--num', type=int, default=4, 
                         help='model version')
 
     if debug:
@@ -61,10 +57,11 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
-    postfix = 'activated'
+    # postfix = 'activated'
     # postfix = 'mutualinfo'
+    postfix = 'gam'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
@@ -168,7 +165,33 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
-    model = VAE(B, config, device).to(device)
+    """import model"""
+    tmp = __import__("utils.model_{}".format(postfix), 
+                    fromlist=["utils.model_{}".format(postfix)])
+    VAE = getattr(tmp, "VAE")
+    
+    if postfix == 'gam':
+        """Decoder masking"""
+        mask = []
+        # light
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[:20, ...] = 1
+        mask.append(m)
+        # angle
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[20:51, ...] = 1
+        mask.append(m)
+        # shadow
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[51:, ...] = 1
+        mask.append(m)
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[51:, ...] = 1
+        mask.append(m)
+        
+        model = VAE(B, mask, config, device).to(device)
+    else:
+        model = VAE(B, config, device).to(device)
     if config["cuda"]:
         model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix)))
     else:
@@ -267,18 +290,18 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
             
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
         logvars.append(logvar)
         align_latents.append(torch.cat(align_latent, dim=1))
     
     logvars = torch.cat(logvars, dim=0)
     fig = plt.figure(figsize=(5, 3))
-    plt.bar(np.arange(config["node"]), torch.exp(logvars.mean(axis=0)).detach().numpy(),
+    plt.bar(np.arange(config["node"]), torch.exp(logvars).mean(axis=0).detach().numpy(),
             width=0.2)
     plt.xticks(np.arange(config["node"]), dataset.name)
     # plt.xlabel('node', fontsize=12)
     plt.ylabel('posterior variance', fontsize=12)
-    
+    plt.ylim(0, 1)
     plt.tight_layout()
     plt.savefig('{}/posterior_variance.png'.format(model_dir), bbox_inches='tight')
     # plt.show()
@@ -315,11 +338,18 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
     
     latent_copy = [x.clone() for x in latent]
     latent_copy[:2] = [torch.zeros(1, 1)] * 2
-    xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
+    
+    if postfix == 'gam':
+        xhat_copy = [D(z) for D, z in zip(model.decoder, latent_copy)]
+        xhat_copy = [x.view(-1, config["image_size"], config["image_size"], 3) for x in xhat_copy]
+        xhat_copy = [x * m for x, m in zip(xhat_copy, model.mask)] # masking
+        xhat_copy = torch.tanh(sum(xhat_copy)) # generalized addictive model (GAM)
+    else:
+        xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
     
     fig, ax = plt.subplots(2, 3, figsize=(6, 3))
     ax[0, 0].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
@@ -342,9 +372,13 @@ def main():
     
     wandb.log({'dependency of decoder on latent (root)': wandb.Image(fig)})
     
-    latent_copy = [x.clone() for x in latent]
-    latent_copy[2:] = [torch.zeros(1, 1)] * 2
-    xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
+    if postfix == 'gam':
+        xhat_copy = [D(z) for D, z in zip(model.decoder, latent_copy)]
+        xhat_copy = [x.view(-1, config["image_size"], config["image_size"], 3) for x in xhat_copy]
+        xhat_copy = [x * m for x, m in zip(xhat_copy, model.mask)] # masking
+        xhat_copy = torch.tanh(sum(xhat_copy)) # generalized addictive model (GAM)
+    else:
+        xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
     
     fig, ax = plt.subplots(2, 3, figsize=(6, 3))
     ax[0, 0].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
@@ -378,7 +412,7 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
     
     # using only mean
     epsilon = mean
@@ -402,6 +436,19 @@ def main():
     plt.close()
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
+    
+    if postfix == 'gam':
+        xhats = [x.view(model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
+        fig, ax = plt.subplots(2, 2, figsize=(5, 5))
+        for i in range(config["node"]):
+            ax.flatten()[i].imshow(xhats[i].detach().cpu().numpy())
+        
+        plt.tight_layout()
+        plt.savefig('{}/gam.png'.format(model_dir), bbox_inches='tight')
+        # plt.show()
+        plt.close()
+        
+        wandb.log({'gam': wandb.Image(fig)})
     #%%
     """reconstruction with do-intervention"""
     for do_index, (min, max) in enumerate(zip(transformed_causal_min, transformed_causal_max)):
@@ -424,8 +471,14 @@ def main():
             z = list(map(lambda x, layer: layer(x), z, model.flows))
             z = [z_[0] for z_ in z]
             
-            do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
-
+            if postfix == 'gam':
+                do_xhat = [D(z_) for D, z_ in zip(model.decoder, z)]
+                do_xhat = [x.view(config["image_size"], config["image_size"], 3) for x in do_xhat]
+                do_xhat = [x * m for x, m in zip(do_xhat, model.mask)] # masking
+                do_xhat = torch.tanh(sum(do_xhat)) # generalized addictive model (GAM)
+            else:
+                do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
+            
             ax.flatten()[k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
             ax.flatten()[k].axis('off')
             ax.flatten()[k].set_title('x = {}'.format(do_value))
