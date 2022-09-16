@@ -85,7 +85,7 @@ def get_args(debug):
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
-    parser.add_argument('--gamma', default=10, type=float,
+    parser.add_argument('--gamma', default=1, type=float,
                         help='weight of f-divergence (lower bound of information)')
     
     if debug:
@@ -297,6 +297,15 @@ def main():
     artifact.add_file('./main_{}.py'.format('mutualinfo'))
     artifact.add_file('./utils/model_{}.py'.format('mutualinfo'))
     wandb.log_artifact(artifact)
+    
+    # """model load"""
+    # artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format('mutualinfo', 0), type='model')
+    # model_dir = artifact.download()
+    # model_ = VAE(B, config, device).to(device)
+    # if config["cuda"]:
+    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('mutualinfo')))
+    # else:
+    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('mutualinfo'), map_location=torch.device('cpu')))
     
     wandb.run.finish()
 #%%
