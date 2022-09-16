@@ -57,7 +57,7 @@ def get_args(debug):
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--scm", default='nonlinear', type=str,
+    parser.add_argument("--scm", default='linear', type=str,
                         help="SCM structure options: linear or nonlinear")
     parser.add_argument("--flow_num", default=1, type=int,
                         help="the number of invertible NN flow")
@@ -81,9 +81,9 @@ def get_args(debug):
     parser.add_argument('--lr_D', default=0.0001, type=float,
                         help='learning rate for discriminator')
     
-    parser.add_argument('--beta', default=10, type=float,
+    parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=10, type=float,
+    parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
     parser.add_argument('--gamma', default=10, type=float,
                         help='weight of f-divergence (lower bound of information)')
@@ -149,9 +149,9 @@ def train(dataloader, model, discriminator, config, optimizer, optimizer_D, devi
             loss_.append(('MutualInfo', MI))
             
             ### posterior variance: for debugging
-            logvar_ = logvar.mean(axis=0)
+            var_ = torch.exp(logvar).mean(axis=0)
             for i in range(config["node"]):
-                loss_.append(('posterior_variance{}'.format(i+1), torch.exp(logvar_[i])))
+                loss_.append(('posterior_variance{}'.format(i+1), var_[i]))
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
@@ -172,7 +172,7 @@ def train(dataloader, model, discriminator, config, optimizer, optimizer_D, devi
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -288,10 +288,12 @@ def main():
     
     """model save"""
     torch.save(model.state_dict(), './assets/model_{}.pth'.format('mutualinfo'))
+    torch.save(discriminator.state_dict(), './assets/discriminator_{}.pth'.format('mutualinfo'))
     artifact = wandb.Artifact('model_{}'.format('mutualinfo'), 
                               type='model',
                               metadata=config) # description=""
     artifact.add_file('./assets/model_{}.pth'.format('mutualinfo'))
+    artifact.add_file('./assets/discriminator_{}.pth'.format('mutualinfo'))
     artifact.add_file('./main_{}.py'.format('mutualinfo'))
     artifact.add_file('./utils/model_{}.py'.format('mutualinfo'))
     wandb.log_artifact(artifact)
