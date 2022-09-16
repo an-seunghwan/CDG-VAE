@@ -80,8 +80,10 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=10, type=float,
                         help='weight of label alignment loss')
+    parser.add_argument('--alpha', default=1, type=float,
+                        help='weight of L1 loss on GAM')
     
     if debug:
         return parser.parse_args(args=[])
@@ -94,6 +96,7 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
+        'L1': [],
     }
     # for debugging
     for i in range(config["node"]):
@@ -108,7 +111,7 @@ def train(dataloader, model, config, optimizer, device):
         with torch.autograd.set_detect_anomaly(True):    
             optimizer.zero_grad()
             
-            mean, logvar, _, _, _, _, align_latent, xhat = model(x_batch)
+            mean, logvar, _, _, _, _, align_latent, xhat_separated, xhat = model(x_batch)
             
             loss_ = []
             
@@ -131,6 +134,15 @@ def train(dataloader, model, config, optimizer, device):
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
             
+            """L1 loss on GAM"""
+            # L1 = sum([torch.abs(x).sum(axis=1) for x in xhat_separated]).mean()
+            # L1 = sum([torch.abs(x).mean() for x in xhat_separated])
+            L1 = -(xhat_separated[0] - xhat_separated[1]).abs().mean()
+            L1 += -(xhat_separated[1] - xhat_separated[2]).abs().mean()
+            L1 += -(xhat_separated[2] - xhat_separated[3]).abs().mean()
+            L1 += -(xhat_separated[3] - xhat_separated[0]).abs().mean()
+            loss_.append(('L1', L1))
+            
             ### posterior variance: for debugging
             var_ = torch.exp(logvar).mean(axis=0)
             for i in range(config["node"]):
@@ -138,6 +150,7 @@ def train(dataloader, model, config, optimizer, device):
             
             loss = recon + config["beta"] * KL 
             loss += config["lambda"] * align
+            loss += config["alpha"] * L1
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -283,4 +296,14 @@ def main():
 #%%
 if __name__ == '__main__':
     main()
+#%%
+# xhats = [x.view(mean.size(0), model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
+# fig, ax = plt.subplots(2, 2, figsize=(5, 5))
+# for i in range(config["node"]):
+#     ax.flatten()[i].imshow(xhats[0][i].detach().cpu().numpy())
+
+# plt.tight_layout()
+# plt.savefig('gam.png', bbox_inches='tight')
+# # plt.show()
+# plt.close()
 #%%

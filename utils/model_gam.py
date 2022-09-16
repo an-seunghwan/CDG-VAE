@@ -171,15 +171,15 @@ class VAE(nn.Module):
         
         return mean, logvar, epsilon, orig_latent, latent, logdet
     
-    def forward(self, input, deterministic=False, log_determinant=False):
+    def forward(self, input, reduction=True, deterministic=False, log_determinant=False):
         """encoding"""
         mean, logvar, epsilon, orig_latent, latent, logdet = self.encode(input, 
                                                                          deterministic=deterministic,
                                                                          log_determinant=log_determinant)
         
         """decoding"""
-        xhat = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = torch.tanh(torch.stack(xhat, dim=2).sum(axis=-1)) # generalized addictive model (GAM)
+        xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
+        xhat = torch.tanh(torch.stack(xhat_separated, dim=2).sum(axis=-1)) # generalized addictive model (GAM)
         xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
         
         """Alignment"""
@@ -187,7 +187,7 @@ class VAE(nn.Module):
                                                   deterministic=True, 
                                                   log_determinant=log_determinant)
         
-        return mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat
+        return mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat
 #%%
 def main():
     config = {
@@ -206,14 +206,14 @@ def main():
         print(x.shape)
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
+    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(batch)
     
     inverse_diff = torch.abs(sum([x - y for x, y in zip(torch.split(orig_latent, 1, dim=1), 
                                                         model.inverse(latent))]).sum())
     assert inverse_diff / (config["n"] * config["node"]) < 1e-5
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch, log_determinant=True)
+    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(batch)
+    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(batch, log_determinant=True)
     
     assert mean.shape == (config["n"], config["node"])
     assert logvar.shape == (config["n"], config["node"])
