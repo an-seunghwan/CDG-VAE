@@ -48,6 +48,14 @@ wandb.init(
 )
 #%%
 import argparse
+import ast
+
+def arg_as_list(s):
+    v = ast.literal_eval(s)
+    if type(v) is not list:
+        raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
+    return v
+
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
@@ -62,6 +70,8 @@ def get_args(debug):
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
+    parser.add_argument("--factor", default=[1, 1, 2], type=arg_as_list, 
+                        help="Numbers of latents allocated to each factor in image")
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
@@ -249,9 +259,6 @@ def main():
     m[20:51, ...] = 1
     mask.append(m)
     # shadow
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
     m = torch.zeros(config["image_size"], config["image_size"], 3)
     m[51:, ...] = 1
     mask.append(m)

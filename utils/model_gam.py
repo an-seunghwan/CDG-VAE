@@ -105,6 +105,8 @@ class VAE(nn.Module):
         
         self.config = config
         self.mask = mask
+        assert sum(config["factor"]) == config["node"]
+        assert len(config["factor"]) == len(mask)
         self.device = device
         
         """encoder"""
@@ -134,12 +136,12 @@ class VAE(nn.Module):
         """decoder"""
         self.decoder = nn.ModuleList(
             [nn.Sequential(
-                nn.Linear(1, 300),
+                nn.Linear(k, 300),
                 nn.ELU(),
                 nn.Linear(300, 300),
                 nn.ELU(),
                 nn.Linear(300, 3*config["image_size"]*config["image_size"]),
-            ).to(device) for _ in range(config["node"])])
+            ).to(device) for k in config["factor"]])
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
@@ -161,7 +163,6 @@ class VAE(nn.Module):
     
     def encode(self, input, deterministic=False, log_determinant=False):
         mean, logvar = self.get_posterior(input)
-        
         """Latent Generating Process"""
         if deterministic:
             epsilon = mean
@@ -169,8 +170,16 @@ class VAE(nn.Module):
             noise = torch.randn(input.size(0), self.config["node"]).to(self.device) 
             epsilon = mean + torch.exp(logvar / 2) * noise
         orig_latent, latent, logdet = self.transform(epsilon, log_determinant=log_determinant)
-        
         return mean, logvar, epsilon, orig_latent, latent, logdet
+    
+    def decode(self, input):
+        latent = torch.cat(input, axis=1)
+        latent = torch.split(latent, self.config["factor"], dim=-1)
+        xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
+        xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
+        xhat = [x * m for x, m in zip(xhat, self.mask)] # masking
+        xhat = torch.tanh(sum(xhat)) # generalized addictive model (GAM)
+        return xhat_separated, xhat
     
     def forward(self, input, reduction=True, deterministic=False, log_determinant=False):
         """encoding"""
@@ -179,10 +188,7 @@ class VAE(nn.Module):
                                                                          log_determinant=log_determinant)
         
         """decoding"""
-        xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
-        xhat = [x * m for x, m in zip(xhat, self.mask)] # masking
-        xhat = torch.tanh(sum(xhat)) # generalized addictive model (GAM)
+        xhat_separated, xhat = self.decode(latent)
         
         """Alignment"""
         _, _, _, _, align_latent, _ = self.encode(input, 
@@ -199,6 +205,7 @@ def main():
         "flow_num": 4,
         "inverse_loop": 100,
         "scm": 'linear',
+        "factor": [1, 1, 2],
     }
     
     B = torch.zeros(config["node"], config["node"])
