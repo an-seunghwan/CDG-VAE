@@ -47,7 +47,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=0, 
+    parser.add_argument('--num', type=int, default=16, 
                         help='model version')
 
     if debug:
@@ -57,11 +57,11 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
-    # postfix = 'activated'
+    # postfix = 'activated' # 18
     # postfix = 'mutualinfo'
-    postfix = 'gam'
+    postfix = 'gam' # 16
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
@@ -185,9 +185,6 @@ def main():
         m = torch.zeros(config["image_size"], config["image_size"], 3)
         m[51:, ...] = 1
         mask.append(m)
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[51:, ...] = 1
-        mask.append(m)
         
         model = VAE(B, mask, config, device).to(device)
     else:
@@ -198,6 +195,51 @@ def main():
         model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix), map_location=torch.device('cpu')))
     
     model.eval()
+    #%%
+    """gradient of decoder w.r.t. latent"""
+    jac_avg = torch.zeros(config["node"], 1)
+    for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
+        if config["cuda"]:
+            x_batch = x_batch.cuda()
+            y_batch = y_batch.cuda()
+        if postfix == 'gam':    
+            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+        else:
+            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+    
+        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3])
+        
+        KL = torch.pow(mean, 2).sum(axis=1)
+        KL -= logvar.sum(axis=1)
+        KL += torch.exp(logvar).sum(axis=1)
+        KL -= config["node"]
+        KL *= 0.5
+        
+        y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
+        align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1)
+        
+        loss = recon + config["beta"] * KL 
+        loss += config["lambda"] * align
+        
+        for node in range(config["node"]):
+            jac = torch.autograd.grad(loss, latent[node], 
+                                      retain_graph=True, grad_outputs=torch.ones(latent[node].shape[0]))[0]
+            jac_avg[node, :] = torch.abs(jac).sum(0)
+    jac_avg /= dataset.y_data.shape[0]
+    
+    fig = plt.figure(figsize=(5, 3))
+    plt.bar(np.arange(config["node"]), jac_avg.numpy().squeeze(),
+            width=0.2)
+    plt.xticks(np.arange(config["node"]), dataset.name)
+    # plt.xlabel('node', fontsize=12)
+    plt.ylabel('jacobian', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig('{}/jacobian.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'Jacobian w.r.t. latent': wandb.Image(fig)})
     #%%
     """latent space (conditional intervention range)"""
     epsilons = []
@@ -289,8 +331,11 @@ def main():
         if config["cuda"]:
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
-            
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+        
+        if postfix == 'gam':    
+            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+        else:
+            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
         logvars.append(logvar)
         align_latents.append(torch.cat(align_latent, dim=1))
     
@@ -338,16 +383,16 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+    if postfix == 'gam':    
+        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+    else:
+        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
     
     latent_copy = [x.clone() for x in latent]
     latent_copy[:2] = [torch.zeros(1, 1)] * 2
     
     if postfix == 'gam':
-        xhat_copy = [D(z) for D, z in zip(model.decoder, latent_copy)]
-        xhat_copy = [x.view(-1, config["image_size"], config["image_size"], 3) for x in xhat_copy]
-        xhat_copy = [x * m for x, m in zip(xhat_copy, model.mask)] # masking
-        xhat_copy = torch.tanh(sum(xhat_copy)) # generalized addictive model (GAM)
+        _, xhat_copy = model.decode(latent_copy)
     else:
         xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
     
@@ -373,10 +418,7 @@ def main():
     wandb.log({'dependency of decoder on latent (root)': wandb.Image(fig)})
     
     if postfix == 'gam':
-        xhat_copy = [D(z) for D, z in zip(model.decoder, latent_copy)]
-        xhat_copy = [x.view(-1, config["image_size"], config["image_size"], 3) for x in xhat_copy]
-        xhat_copy = [x * m for x, m in zip(xhat_copy, model.mask)] # masking
-        xhat_copy = torch.tanh(sum(xhat_copy)) # generalized addictive model (GAM)
+        _, xhat_copy = model.decode(latent_copy)
     else:
         xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
     
@@ -412,7 +454,10 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+    if postfix == 'gam':    
+        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+    else:
+        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
     
     # using only mean
     epsilon = mean
@@ -439,9 +484,9 @@ def main():
     
     if postfix == 'gam':
         xhats = [x.view(model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
-        fig, ax = plt.subplots(2, 2, figsize=(5, 5))
-        for i in range(config["node"]):
-            ax.flatten()[i].imshow(xhats[i].detach().cpu().numpy())
+        fig, ax = plt.subplots(1, 3, figsize=(7, 4))
+        for i in range(len(config["factor"])):
+            ax[i].imshow(xhats[i].detach().cpu().numpy())
         
         plt.tight_layout()
         plt.savefig('{}/gam.png'.format(model_dir), bbox_inches='tight')
@@ -472,10 +517,8 @@ def main():
             z = [z_[0] for z_ in z]
             
             if postfix == 'gam':
-                do_xhat = [D(z_) for D, z_ in zip(model.decoder, z)]
-                do_xhat = [x.view(config["image_size"], config["image_size"], 3) for x in do_xhat]
-                do_xhat = [x * m for x, m in zip(do_xhat, model.mask)] # masking
-                do_xhat = torch.tanh(sum(do_xhat)) # generalized addictive model (GAM)
+                _, do_xhat = model.decode(z)
+                do_xhat = do_xhat[0]
             else:
                 do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
             
