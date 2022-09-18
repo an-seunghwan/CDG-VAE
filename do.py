@@ -60,7 +60,7 @@ def main():
     config = vars(get_args(debug=True)) # default configuration
     
     # postfix = 'activated' # 18
-    # postfix = 'mutualinfo'
+    # postfix = 'mutualinfo' # 5
     postfix = 'gam' # 16
     
     """model load"""
@@ -226,6 +226,7 @@ def main():
                                       retain_graph=True, grad_outputs=torch.ones(latent[node].shape[0]))[0]
             jac_avg[node, :] = torch.abs(jac).sum(0)
     jac_avg /= dataset.y_data.shape[0]
+    jac_avg /= jac_avg.max()
     
     fig = plt.figure(figsize=(5, 3))
     plt.bar(np.arange(config["node"]), jac_avg.numpy().squeeze(),
