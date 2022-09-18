@@ -242,89 +242,14 @@ def main():
     
     wandb.log({'Jacobian w.r.t. latent': wandb.Image(fig)})
     #%%
-    """latent space (conditional intervention range)"""
+    """
+    & intervention range
+    & posterior conditional variance
+    & cross entropy of supervised loss: disentanglement
+    """
     epsilons = []
     orig_latents = []
     latents = []
-    iter_test = iter(dataloader)
-    for x_batch, y_batch in tqdm.tqdm(iter_test):
-        if config["cuda"]:
-            x_batch = x_batch.cuda()
-            y_batch = y_batch.cuda()
-            
-        mean, logvar, epsilon, orig_latent, latent, _ = model.encode(x_batch, deterministic=True)
-        epsilons.append(epsilon.squeeze())
-        orig_latents.append(orig_latent.squeeze())
-        latents.append(torch.cat(latent, dim=1))
-    epsilons = torch.cat(epsilons, dim=0)
-    epsilons = epsilons.detach().cpu().numpy()
-    orig_latents = torch.cat(orig_latents, dim=0)
-    orig_latents = orig_latents.detach().cpu().numpy()
-    latents = torch.cat(latents, dim=0)
-    
-    # orig_latents_corr = np.abs(np.corrcoef(orig_latents.T).round(2))
-    # fig = plt.figure(figsize=(5, 4))
-    # plt.pcolor(np.flipud(orig_latents_corr), cmap='coolwarm')
-    # plt.axis('off')
-    # plt.colorbar()
-    # plt.show()
-    # # plt.savefig('assets/epsilon_corr.png')
-    # # plt.close()
-    # # wandb.log({'absolute correlation plot of epsilons': wandb.Image(fig)})
-    
-    fig, ax = plt.subplots(2, 3, figsize=(10, 5))
-    ax[0, 0].scatter(orig_latents[:, 0], orig_latents[:, 1], s=2, alpha=0.5)
-    ax[0, 0].set_xlabel('$z_1$', fontsize=15)
-    ax[0, 0].set_ylabel('$z_2$', fontsize=15)
-    ax[0, 1].scatter(orig_latents[:, 0], orig_latents[:, 2], s=2, alpha=0.5)
-    ax[0, 1].set_xlabel('$z_1$', fontsize=15)
-    ax[0, 1].set_ylabel('$z_3$', fontsize=15)
-    ax[0, 2].scatter(orig_latents[:, 0], orig_latents[:, 3], s=2, alpha=0.5)
-    ax[0, 2].set_xlabel('$z_1$', fontsize=15)
-    ax[0, 2].set_ylabel('$z_4$', fontsize=15)
-    ax[1, 1].scatter(orig_latents[:, 1], orig_latents[:, 2], s=2, alpha=0.5)
-    ax[1, 1].set_xlabel('$z_2$', fontsize=15)
-    ax[1, 1].set_ylabel('$z_3$', fontsize=15)
-    ax[1, 2].scatter(orig_latents[:, 1], orig_latents[:, 3], s=2, alpha=0.5)
-    ax[1, 2].set_xlabel('$z_2$', fontsize=15)
-    ax[1, 2].set_ylabel('$z_4$', fontsize=15)
-    plt.tight_layout()
-    plt.savefig('{}/latent_space.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
-    plt.close()
-    
-    wandb.log({'latent space (conditional intervention range)': wandb.Image(fig)})
-    #%%
-    """causal latent max-min difference"""
-    causal_min = np.quantile(orig_latents, q=0.05, axis=0)
-    causal_max = np.quantile(orig_latents, q=0.95, axis=0)
-    
-    transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.05, axis=0)
-    transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.95, axis=0)
-    
-    fig, ax = plt.subplots(1, 2, figsize=(6, 3))
-    ax[0].bar(np.arange(config["node"]), np.abs(causal_max - causal_min),
-            width=0.2)
-    ax[0].set_xticks(np.arange(config["node"]))
-    ax[0].set_xticklabels(dataset.name)
-    ax[0].set_ylabel('latent (intervened)', fontsize=12)
-    ax[1].bar(np.arange(config["node"]), np.abs(transformed_causal_max - transformed_causal_min),
-            width=0.2)
-    ax[1].set_xticks(np.arange(config["node"]))
-    ax[1].set_xticklabels(dataset.name)
-    ax[1].set_ylabel('transformed latent', fontsize=12)
-    
-    plt.tight_layout()
-    plt.savefig('{}/latent_maxmin.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
-    plt.close()
-    
-    wandb.log({'causal latent max-min difference': wandb.Image(fig)})
-    #%%
-    """
-    & posterior conditional variance
-    & cross entropy of supervised loss
-    """
     logvars = []
     align_latents = []
     iter_test = iter(dataloader)
@@ -337,9 +262,46 @@ def main():
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
         else:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+        epsilons.append(epsilon.squeeze())
+        orig_latents.append(orig_latent.squeeze())
+        latents.append(torch.cat(latent, dim=1))
         logvars.append(logvar)
         align_latents.append(torch.cat(align_latent, dim=1))
     
+    epsilons = torch.cat(epsilons, dim=0)
+    epsilons = epsilons.detach().cpu().numpy()
+    orig_latents = torch.cat(orig_latents, dim=0)
+    orig_latents = orig_latents.detach().cpu().numpy()
+    latents = torch.cat(latents, dim=0)
+    
+    ### intervention range
+    causal_min = np.quantile(orig_latents, q=0.05, axis=0)
+    causal_max = np.quantile(orig_latents, q=0.95, axis=0)
+    transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.05, axis=0)
+    transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.95, axis=0)
+    
+    fig, ax = plt.subplots(1, 2, figsize=(6, 3))
+    diff = np.abs(causal_max - causal_min)
+    diff /= diff.max()
+    ax[0].bar(np.arange(config["node"]), diff, width=0.2)
+    ax[0].set_xticks(np.arange(config["node"]))
+    ax[0].set_xticklabels(dataset.name)
+    ax[0].set_ylabel('latent (intervened)', fontsize=12)
+    diff = np.abs(transformed_causal_max - transformed_causal_min)
+    diff /= diff.max()
+    ax[1].bar(np.arange(config["node"]), diff, width=0.2)
+    ax[1].set_xticks(np.arange(config["node"]))
+    ax[1].set_xticklabels(dataset.name)
+    ax[1].set_ylabel('transformed latent', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig('{}/latent_maxmin.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'causal latent max-min difference': wandb.Image(fig)})
+    
+    ### posterior conditional variance
     logvars = torch.cat(logvars, dim=0)
     fig = plt.figure(figsize=(5, 3))
     plt.bar(np.arange(config["node"]), torch.exp(logvars).mean(axis=0).detach().numpy(),
@@ -355,6 +317,7 @@ def main():
     
     wandb.log({'posterior conditional variance': wandb.Image(fig)})
     
+    ### cross entropy
     align_latents = torch.cat(align_latents, dim=0)
     y_hat = torch.sigmoid(align_latents)
     align = F.binary_cross_entropy(y_hat, 
@@ -374,81 +337,10 @@ def main():
     
     wandb.log({'cross entropy of supervised loss': wandb.Image(fig)})
     #%%
-    """dependency of decoder on latent"""
+    """reconstruction"""
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
     iter_test = iter(dataloader)
     count = 1
-    for _ in range(count):
-        x_batch, y_batch = next(iter_test)
-    if config["cuda"]:
-        x_batch = x_batch.cuda()
-        y_batch = y_batch.cuda()
-    
-    if postfix == 'gam':    
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
-    else:
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
-    
-    latent_copy = [x.clone() for x in latent]
-    latent_copy[:2] = [torch.zeros(1, 1)] * 2
-    
-    if postfix == 'gam':
-        _, xhat_copy = model.decode(latent_copy)
-    else:
-        xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
-    
-    fig, ax = plt.subplots(2, 3, figsize=(6, 3))
-    ax[0, 0].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
-    # ax[0, 0].axis('off')
-    ax[1, 0].plot([x[0][0].item() for x in latent])
-    ax[1, 0].set_ylim(-2, 2)
-    ax[0, 1].imshow((xhat_copy[0].cpu().detach().numpy() + 1) / 2)
-    # ax[0, 1].axis('off')
-    ax[1, 1].plot([x[0][0].item() for x in latent_copy])
-    ax[1, 1].set_ylim(-2, 2)
-    ax[0, 2].imshow(((xhat - xhat_copy).abs().detach().numpy()[0] + 1) / 2)
-    ax[0, 2].axis('off')
-    # ax[1, 2].plot([x[0][0].item() - y[0][0].item() for x, y in zip(latent, latent_copy)])
-    # ax[1, 2].set_ylim(-2, 2)
-    fig.delaxes(ax[1, 2])
-    plt.tight_layout()
-    plt.savefig('{}/latent_dependency_root.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
-    plt.close()
-    
-    wandb.log({'dependency of decoder on latent (root)': wandb.Image(fig)})
-    
-    if postfix == 'gam':
-        _, xhat_copy = model.decode(latent_copy)
-    else:
-        xhat_copy = model.decoder(torch.cat(latent_copy, dim=1)).view(1, config['image_size'], config['image_size'], 3)
-    
-    fig, ax = plt.subplots(2, 3, figsize=(6, 3))
-    ax[0, 0].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
-    # ax[0, 0].axis('off')
-    ax[1, 0].plot([x[0][0].item() for x in latent])
-    ax[1, 0].set_ylim(-2, 2)
-    ax[0, 1].imshow((xhat_copy[0].cpu().detach().numpy() + 1) / 2)
-    # ax[0, 1].axis('off')
-    ax[1, 1].plot([x[0][0].item() for x in latent_copy])
-    ax[1, 1].set_ylim(-2, 2)
-    ax[0, 2].imshow(((xhat - xhat_copy).abs().detach().numpy()[0] + 1) / 2)
-    ax[0, 2].axis('off')
-    # ax[1, 2].plot([x[0][0].item() - y[0][0].item() for x, y in zip(latent, latent_copy)])
-    # ax[1, 2].set_ylim(-2, 2)
-    fig.delaxes(ax[1, 2])
-    plt.tight_layout()
-    plt.savefig('{}/latent_dependency_child.png'.format(model_dir), bbox_inches='tight')
-    # plt.show()
-    plt.close()
-    
-    wandb.log({'dependency of decoder on latent (child)': wandb.Image(fig)})
-    #%%
-    """reconstruction"""
-    # test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
-    iter_test = iter(dataloader)
-    count = 2
     for _ in range(count):
         x_batch, y_batch = next(iter_test)
     if config["cuda"]:
@@ -496,10 +388,10 @@ def main():
         
         wandb.log({'gam': wandb.Image(fig)})
     #%%
-    """reconstruction with do-intervention"""
+    """do-intervention"""
+    fig, ax = plt.subplots(config["node"], 9, figsize=(10, 4))
+    
     for do_index, (min, max) in enumerate(zip(transformed_causal_min, transformed_causal_max)):
-        fig, ax = plt.subplots(3, 3, figsize=(5, 5))
-        
         for k, do_value in enumerate(np.linspace(min, max, 9)):
             do_value = round(do_value, 1)
             latent_ = [x.clone() for x in latent]
@@ -523,67 +415,25 @@ def main():
             else:
                 do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
             
-            ax.flatten()[k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
-            ax.flatten()[k].axis('off')
-            ax.flatten()[k].set_title('x = {}'.format(do_value))
-            # ax.flatten()[k].set_title('do({} = {})'.format(name[do_index], do_value))
+            ax[do_index, k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
+            ax[do_index, k].axis('off')
+            # ax[do_index, k].set_title('x = {}'.format(do_value))
         
-        plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
-        plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
-        # plt.show()
-        plt.close()
+        # plt.suptitle('do({} = x)'.format(test_dataset.name[do_index]), fontsize=15)
+        # plt.savefig('{}/do_{}.png'.format(model_dir, test_dataset.name[do_index]), bbox_inches='tight')
+        # # plt.show()
+        # plt.close()
         
-        wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
+        # wandb.log({'do intervention on {}'.format(test_dataset.name[do_index]): wandb.Image(fig)})
+    
+    plt.savefig('{}/do.png'.format(model_dir), bbox_inches='tight')
+    # plt.show()
+    plt.close()
+    
+    wandb.log({'do intervention ({})'.format(', '.join(test_dataset.name)): wandb.Image(fig)})
     #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
-#%%
-# fig, ax = plt.subplots(2, 5, figsize=(10, 5))
-# for i, k in enumerate(np.linspace(-2, 4, 10)):
-#     z = [torch.tensor([[0]], dtype=torch.float32),
-#         torch.tensor([[0]], dtype=torch.float32),
-#         torch.tensor([[k]], dtype=torch.float32),
-#         torch.tensor([[0]], dtype=torch.float32)]
-#     z = list(map(lambda x, layer: layer(x), z, model.flows))
-#     z = [z_[0] for z_ in z]
-    
-#     do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
-#     ax.flatten()[i].imshow((do_xhat.detach().cpu().numpy() + 1) / 2)
-# plt.show()
-# plt.close()
-
-# #
-# points = [[2, -1.5], [2, 3], [0, 1], [0, 3]]
-# plt.scatter(epsilons[:, 0], epsilons[:, 2], s=2, alpha=0.5)
-# plt.scatter([p[0] for p in points], [p[1] for p in points])
-# plt.xlabel('$\epsilon_1$', fontsize=15)
-# plt.ylabel('$\epsilon_3$', fontsize=15)
-# plt.show()
-# plt.close()
-
-# fig, ax = plt.subplots(2, 2, figsize=(5, 5))    
-# do_xhats = []
-# for i, p in enumerate(points):
-#     z = [torch.tensor([[0]], dtype=torch.float32),
-#         torch.tensor([[0]], dtype=torch.float32),
-#         torch.tensor([[0]], dtype=torch.float32),
-#         torch.tensor([[0]], dtype=torch.float32)]
-#     z[0] = torch.tensor([[p[0]]], dtype=torch.float32)
-#     z[2] = torch.tensor([[p[1]]], dtype=torch.float32)
-#     z = list(map(lambda x, layer: layer(x), z, model.flows))
-#     z = [z_[0] for z_ in z]
-    
-#     do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
-#     ax.flatten()[i].imshow((do_xhat.detach().cpu().numpy() + 1) / 2)
-#     do_xhats.append(do_xhat)
-# plt.show()
-# plt.close()
-
-# fig, ax = plt.subplots(1, 2, figsize=(5, 5))    
-# ax.flatten()[0].imshow(((do_xhats[0] - do_xhats[1]).detach().cpu().numpy() + 1) / 2)
-# ax.flatten()[1].imshow(((do_xhats[2] - do_xhats[3]).detach().cpu().numpy() + 1) / 2)
-# plt.show()
-# plt.close()
 #%%
