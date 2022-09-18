@@ -177,7 +177,7 @@ class VAE(nn.Module):
         latent = torch.split(latent, self.config["factor"], dim=-1)
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
         xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
-        xhat = [x * m for x, m in zip(xhat, self.mask)] # masking
+        xhat = [x * m.to(self.device) for x, m in zip(xhat, self.mask)] # masking
         xhat = torch.tanh(sum(xhat)) # generalized addictive model (GAM)
         return xhat_separated, xhat
     
