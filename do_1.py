@@ -209,24 +209,12 @@ def main():
     
         recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3])
         
-        KL = torch.pow(mean, 2).sum(axis=1)
-        KL -= logvar.sum(axis=1)
-        KL += torch.exp(logvar).sum(axis=1)
-        KL -= config["node"]
-        KL *= 0.5
-        
-        y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1)
-        
-        loss = recon + config["beta"] * KL 
-        loss += config["lambda"] * align
-        
         for node in range(config["node"]):
-            jac = torch.autograd.grad(loss, latent[node], 
+            jac = torch.autograd.grad(recon, latent[node], 
                                       retain_graph=True, grad_outputs=torch.ones(latent[node].shape[0]))[0]
             jac_avg[node, :] = torch.abs(jac).sum(0)
     jac_avg /= dataset.y_data.shape[0]
-    jac_avg /= jac_avg.max()
+    # jac_avg /= jac_avg.max()
     
     fig = plt.figure(figsize=(5, 3))
     plt.bar(np.arange(config["node"]), jac_avg.numpy().squeeze(),
