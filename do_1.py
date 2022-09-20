@@ -263,10 +263,10 @@ def main():
     latents = torch.cat(latents, dim=0)
     
     ### intervention range
-    causal_min = np.quantile(orig_latents, q=0.05, axis=0)
-    causal_max = np.quantile(orig_latents, q=0.95, axis=0)
-    transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.05, axis=0)
-    transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.95, axis=0)
+    causal_min = np.quantile(orig_latents, q=0.01, axis=0)
+    causal_max = np.quantile(orig_latents, q=0.99, axis=0)
+    transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.01, axis=0)
+    transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.99, axis=0)
     
     fig, ax = plt.subplots(1, 2, figsize=(6, 3))
     diff = np.abs(causal_max - causal_min)
@@ -328,7 +328,7 @@ def main():
     """reconstruction"""
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
     iter_test = iter(dataloader)
-    count = 1
+    count = 8
     for _ in range(count):
         x_batch, y_batch = next(iter_test)
     if config["cuda"]:
