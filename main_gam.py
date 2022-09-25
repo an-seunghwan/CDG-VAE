@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_gam import (
+from utils.model_GAM import (
     VAE,
 )
 #%%
@@ -41,7 +41,7 @@ except:
     subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
     import wandb
 
-wandb.init(
+run = wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
     tags=["GAM"],
@@ -90,10 +90,8 @@ def get_args(debug):
     
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=10, type=float,
+    parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
-    # parser.add_argument('--alpha', default=10, type=float,
-    #                     help='weight of L1 loss on GAM')
     
     if debug:
         return parser.parse_args(args=[])
@@ -106,7 +104,6 @@ def train(dataloader, model, config, optimizer, device):
         'recon': [],
         'KL': [],
         'alignment': [],
-        # 'L1': [],
     }
     # for debugging
     for i in range(config["node"]):
@@ -143,24 +140,6 @@ def train(dataloader, model, config, optimizer, device):
             y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
             align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
             loss_.append(('alignment', align))
-            
-            # """L1 loss on GAM"""
-            # # L1 = sum([torch.abs(x).sum(axis=1) for x in xhat_separated]).mean()
-            # # L1 = sum([torch.abs(x).mean() for x in xhat_separated])
-            # # L1 = -(xhat_separated[0] - xhat_separated[1]).pow(2).mean()
-            # # L1 += -(xhat_separated[1] - xhat_separated[2]).pow(2).mean()
-            # # L1 += -(xhat_separated[2] - xhat_separated[3]).pow(2).mean()
-            # # L1 += -(xhat_separated[3] - xhat_separated[0]).pow(2).mean()
-            # # L1 = (xhat_separated[0] @ xhat_separated[1].t()).pow(2).mean()
-            # # L1 += (xhat_separated[1] @ xhat_separated[2].t()).pow(2).mean()
-            # # L1 += (xhat_separated[2] @ xhat_separated[3].t()).pow(2).mean()
-            # # L1 += (xhat_separated[3] @ xhat_separated[0].t()).pow(2).mean()
-            # xhat_separated = [x.view(mean.size(0), config["image_size"] * config["image_size"], 3) for x in xhat_separated]
-            # L1 = (xhat_separated[0] * xhat_separated[1]).sum(axis=-1).pow(2).mean()
-            # L1 += (xhat_separated[1] * xhat_separated[2]).sum(axis=-1).pow(2).mean()
-            # L1 += (xhat_separated[2] * xhat_separated[3]).sum(axis=-1).pow(2).mean()
-            # L1 += (xhat_separated[3] * xhat_separated[0]).sum(axis=-1).pow(2).mean()
-            # loss_.append(('L1', L1))
             
             ### posterior variance: for debugging
             var_ = torch.exp(logvar).mean(axis=0)
@@ -224,23 +203,17 @@ def main():
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """
-    Estimated Causal Adjacency Matrix
+    Causal Adjacency Matrix
     light -> length
     light -> position
     angle -> length
     angle -> position
-    length -- position
-    
-    # Since var(length) < var(position), we set length -> position
     """
-    # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B_value = 1
-    B[dataset.name.index('light'), dataset.name.index('length')] = B_value
-    B[dataset.name.index('light'), dataset.name.index('position')] = B_value
-    B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
-    B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
-    # B[dataset.name.index('length'), dataset.name.index('position')] = B_value
+    B[dataset.name.index('light'), dataset.name.index('length')] = 1
+    B[dataset.name.index('light'), dataset.name.index('position')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -304,41 +277,18 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format('gam'))
-    artifact = wandb.Artifact('model_{}'.format('gam'), 
+    postfix = run.tags[0]
+    torch.save(model.state_dict(), './assets/model_{}.pth'.format(postfix))
+    artifact = wandb.Artifact('model_{}'.format(postfix), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format('gam'))
-    artifact.add_file('./main_{}.py'.format('gam'))
-    artifact.add_file('./utils/model_{}.py'.format('gam'))
+    artifact.add_file('./assets/model_{}.pth'.format(postfix))
+    artifact.add_file('./main_{}.py'.format(postfix))
+    artifact.add_file('./utils/model_{}.py'.format(postfix))
     wandb.log_artifact(artifact)
-    
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format('gam', 0), type='model')
-    # model_dir = artifact.download()
-    # model_ = VAE(B, config, device).to(device)
-    # if config["cuda"]:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('gam')))
-    # else:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('gam'), map_location=torch.device('cpu')))
-    # x = torch.randn(1, 3, 64, 64)
-    # out = model(x, deterministic=True)
-    # out_ = model_(x, deterministic=True)
-    # out[-1] == out_[-1]
     
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
-#%%
-# xhat = [x.view(-1, config["image_size"], config["image_size"], 3) for x in xhat_separated]
-# xhat = [x * m for x, m in zip(xhat, model.mask)] # masking
-# fig, ax = plt.subplots(2, 2, figsize=(5, 5))
-# for i in range(config["node"]):
-#     ax.flatten()[i].imshow(xhat[i][0].detach().cpu().numpy())
-
-# plt.tight_layout()
-# plt.savefig('gam.png', bbox_inches='tight')
-# # plt.show()
-# plt.close()
 #%%
