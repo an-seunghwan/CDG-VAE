@@ -230,7 +230,7 @@ def main():
     # causal_min = np.quantile(orig_latents, q=0.01, axis=0)
     # causal_max = np.quantile(orig_latents, q=0.99, axis=0)
     # transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.01, axis=0)
-    # transformed_causal_max = np.quantile(latents.detach().nump`y(), q=0.99, axis=0)
+    # transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.99, axis=0)
     
     fig, ax = plt.subplots(1, 2, figsize=(6, 3))
     diff = np.abs(causal_max - causal_min)
