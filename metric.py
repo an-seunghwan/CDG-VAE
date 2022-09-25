@@ -57,10 +57,10 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
-    # postfix = 'vanilla' # 18
-    postfix = 'InfoMax' # 5
+    postfix = 'vanilla' # 18
+    # postfix = 'InfoMax' # 5
     # postfix = 'gam' # 16
     
     """model load"""
