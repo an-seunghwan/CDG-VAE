@@ -1,5 +1,6 @@
 project: (proposal)CausalVAE
-program: main_vanilla.py
+# program: main_vanilla.py
+program: main_InfoMax.py
 method: grid
 metric:
   goal: minimize
@@ -11,5 +12,5 @@ parameters:
     values: [0.1, 1, 10]
   lambda:
     values: [5, 10]
-  # gamma:
-  #   values: [0, 1, 5, 10]
+  gamma:
+    values: [1, 5, 10]
