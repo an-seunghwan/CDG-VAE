@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_GAM import (
+from utils.model_gam import (
     VAE,
 )
 #%%
