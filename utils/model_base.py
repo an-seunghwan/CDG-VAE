@@ -15,7 +15,7 @@ class InvertiblePriorLinear(nn.Module):
     """
     def __init__(self, device='cpu'):
         super(InvertiblePriorLinear, self).__init__()
-        self.p = nn.Parameter(torch.rand([2]) * 0.1).to(device)
+        self.p = nn.Parameter(torch.rand([2], device=device) * 0.1)
 
     def forward(self, eps, log_determinant=False):
         o = self.p[0] * eps + self.p[1]
@@ -188,6 +188,23 @@ class VAE(nn.Module):
         
         return mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat
 #%%
+class Discriminator(nn.Module):
+    def __init__(self, config, device='cpu'):
+        super(Discriminator, self).__init__()
+        self.config = config
+        self.net = nn.Sequential(
+            nn.Linear(3*config["image_size"]*config["image_size"] + config["node"], 300),
+            nn.ELU(),
+            nn.Linear(300, 300),
+            nn.ELU(),
+            nn.Linear(300, 1),
+        ).to(device)
+
+    def forward(self, x, z):
+        x = x.view(-1, 3*self.config["image_size"]*self.config["image_size"])
+        x = torch.cat((x, z), dim=1)
+        return self.net(x)
+#%%
 def main():
     config = {
         "image_size": 64,
@@ -201,7 +218,10 @@ def main():
     B = torch.zeros(config["node"], config["node"])
     B[:2, 2:] = 1
     model = VAE(B, config, 'cpu')
+    discriminator = Discriminator(config, 'cpu')
     for x in model.parameters():
+        print(x.shape)
+    for x in discriminator.parameters():
         print(x.shape)
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
     
@@ -210,7 +230,9 @@ def main():
                                                         model.inverse(latent))]).sum())
     assert inverse_diff / (config["n"] * config["node"]) < 1e-5
     
-    mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
+    info = discriminator(batch, epsilon)
+    assert info.shape == (config["n"], 1)
+    
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch, log_determinant=True)
     
     assert mean.shape == (config["n"], config["node"])

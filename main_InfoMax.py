@@ -26,7 +26,7 @@ from utils.viz import (
     viz_heatmap,
 )
 
-from utils.model_mutualinfo import (
+from utils.model_base import (
     VAE,
     Discriminator
 )
@@ -42,10 +42,10 @@ except:
     subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
     import wandb
 
-wandb.init(
+run = wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["Mutual-Information"],
+    tags=["InfoMax"],
 )
 #%%
 import argparse
@@ -172,7 +172,7 @@ def train(dataloader, model, discriminator, config, optimizer, optimizer_D, devi
     return logs, xhat
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -214,23 +214,17 @@ def main():
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """
-    Estimated Causal Adjacency Matrix
+    Causal Adjacency Matrix
     light -> length
     light -> position
     angle -> length
     angle -> position
-    length -- position
-    
-    # Since var(length) < var(position), we set length -> position
     """
-    # dataset.std
     B = torch.zeros(config["node"], config["node"])
-    B_value = 1
-    B[dataset.name.index('light'), dataset.name.index('length')] = B_value
-    B[dataset.name.index('light'), dataset.name.index('position')] = B_value
-    B[dataset.name.index('angle'), dataset.name.index('length')] = B_value
-    B[dataset.name.index('angle'), dataset.name.index('position')] = B_value
-    # B[dataset.name.index('length'), dataset.name.index('position')] = B_value
+    B[dataset.name.index('light'), dataset.name.index('length')] = 1
+    B[dataset.name.index('light'), dataset.name.index('position')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -287,25 +281,17 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format('mutualinfo'))
-    torch.save(discriminator.state_dict(), './assets/discriminator_{}.pth'.format('mutualinfo'))
-    artifact = wandb.Artifact('model_{}'.format('mutualinfo'), 
+    postfix = run.tags[0]
+    torch.save(model.state_dict(), './assets/model_{}.pth'.format(postfix))
+    torch.save(discriminator.state_dict(), './assets/discriminator_{}.pth'.format(postfix))
+    artifact = wandb.Artifact('model_{}'.format(postfix), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format('mutualinfo'))
-    artifact.add_file('./assets/discriminator_{}.pth'.format('mutualinfo'))
-    artifact.add_file('./main_{}.py'.format('mutualinfo'))
-    artifact.add_file('./utils/model_{}.py'.format('mutualinfo'))
+    artifact.add_file('./assets/model_{}.pth'.format(postfix))
+    artifact.add_file('./assets/discriminator_{}.pth'.format(postfix))
+    artifact.add_file('./main_{}.py'.format(postfix))
+    artifact.add_file('./utils/model_base.py')
     wandb.log_artifact(artifact)
-    
-    # """model load"""
-    # artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format('mutualinfo', 0), type='model')
-    # model_dir = artifact.download()
-    # model_ = VAE(B, config, device).to(device)
-    # if config["cuda"]:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('mutualinfo')))
-    # else:
-    #     model_.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('mutualinfo'), map_location=torch.device('cpu')))
     
     wandb.run.finish()
 #%%
