@@ -47,7 +47,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=16, 
+    parser.add_argument('--num', type=int, default=13, 
                         help='model version')
 
     if debug:
@@ -60,11 +60,14 @@ def main():
     config = vars(get_args(debug=True)) # default configuration
     
     # postfix = 'vanilla' # 9
-    # postfix = 'InfoMax' # 13
-    postfix = 'gam' # 16
+    postfix = 'InfoMax' # 13
+    # postfix = 'gam' # 16
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix.lower(), config["num"]), type='model')
+    try:
+        artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
+    except:
+        artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix.lower(), config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     model_dir = artifact.download()
@@ -195,7 +198,29 @@ def main():
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_classifier:v{}'.format(0), type='model')
     model_dir = artifact.download()
     from utils.model_classifier import Classifier
-    classifier = Classifier(config, device)
+    """masking"""
+    # if config["dataset"] == 'pendulum':
+    mask = []
+    # light
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[:20, ...] = 1
+    mask.append(m)
+    # angle
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[20:51, ...] = 1
+    mask.append(m)
+    # shadow
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+        
+    # elif config["dataset"] == 'celeba':
+    #     raise NotImplementedError('Not yet for CELEBA dataset!')
+    
+    classifier = Classifier(mask, config, device) 
     if config["cuda"]:
         classifier.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('classifier')))
     else:
@@ -270,9 +295,9 @@ def main():
 
                         """factor classification"""
                         score.append(torch.sigmoid(classifier(do_xhat))[:, dataset.name.index(c)])
-                    ACE += (score[0] - score[1]).abs().sum()
+                    ACE += (score[0] - score[1]).sum()
             ACE /= dataset.__len__()
-            ACE_dict[s] = ACE_dict.get(s) + [(c, ACE.item())]
+            ACE_dict[s] = ACE_dict.get(s) + [(c, ACE.abs().item())]
     
     ACE_mat = np.zeros((config["node"], config["node"]))
     for i, c in enumerate(dataset.name):
