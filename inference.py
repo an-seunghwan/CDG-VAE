@@ -57,14 +57,14 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     # postfix = 'vanilla' 
     # postfix = 'InfoMax' 
-    postfix = 'GAM' 
+    postfix = 'gam' 
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix.lower(), config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     model_dir = artifact.download()
@@ -160,7 +160,7 @@ def main():
         B[:, mask] = B[:, mask] / indegree[mask]
     
     """import model"""
-    if postfix == 'GAM':
+    if postfix == 'gam':
         """Decoder masking"""
         mask = []
         # light
@@ -206,7 +206,7 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
         
-        if postfix == 'GAM':    
+        if postfix == 'gam':    
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
         else:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -299,7 +299,7 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    if postfix == 'GAM':    
+    if postfix == 'gam':    
         mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
     else:
         mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -357,7 +357,7 @@ def main():
             z = list(map(lambda x, layer: layer(x), z, model.flows))
             z = [z_[0] for z_ in z]
             
-            if postfix == 'GAM':
+            if postfix == 'gam':
                 _, do_xhat = model.decode(z)
                 do_xhat = do_xhat[0]
             else:
