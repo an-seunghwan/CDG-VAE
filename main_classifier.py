@@ -48,6 +48,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument('--dataset', type=str, default='pendulum', 
+                        help='Dataset options: pendulum or celeba')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
@@ -56,7 +58,7 @@ def get_args(debug):
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
     
-    parser.add_argument('--epochs', default=100, type=int,
+    parser.add_argument('--epochs', default=50, type=int,
                         help='maximum iteration')
     parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size')
@@ -142,7 +144,29 @@ def main():
     dataset = CustomDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
-    model = Classifier(config, device) 
+    """masking"""
+    if config["dataset"] == 'pendulum':
+        mask = []
+        # light
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[:20, ...] = 1
+        mask.append(m)
+        # angle
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[20:51, ...] = 1
+        mask.append(m)
+        # shadow
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[51:, ...] = 1
+        mask.append(m)
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[51:, ...] = 1
+        mask.append(m)
+        
+    elif config["dataset"] == 'celeba':
+        raise NotImplementedError('Not yet for CELEBA dataset!')
+    
+    model = Classifier(mask, config, device) 
     model = model.to(device)
     
     optimizer = torch.optim.Adam(
