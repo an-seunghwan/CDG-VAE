@@ -47,7 +47,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=13, 
+    parser.add_argument('--num', type=int, default=16, 
                         help='model version')
 
     if debug:
@@ -60,8 +60,8 @@ def main():
     config = vars(get_args(debug=True)) # default configuration
     
     # postfix = 'vanilla' # 9
-    postfix = 'InfoMax' # 13
-    # postfix = 'gam' # 16
+    # postfix = 'InfoMax' # 13
+    postfix = 'gam' # 16
     
     """model load"""
     try:
@@ -233,24 +233,28 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
         
-        if postfix == 'gam':    
-            _, _, _, _, latent, _, _, _, _ = model(x_batch, deterministic=True)
-        else:
-            _, _, _, _, latent, _, _, _ = model(x_batch, deterministic=True)
+        with torch.no_grad():
+            if postfix == 'gam':    
+                _, _, _, _, latent, _, _, _, _ = model(x_batch, deterministic=True)
+            else:
+                _, _, _, _, latent, _, _, _ = model(x_batch, deterministic=True)
         latents.append(torch.cat(latent, dim=1))
     
     latents = torch.cat(latents, dim=0)
     
-    latent_min = latents.detach().numpy().min(axis=0)
-    latent_max = latents.detach().numpy().max(axis=0)
+    latent_min = latents.numpy().min(axis=0)
+    latent_max = latents.numpy().max(axis=0)
     #%%
     """metric"""
-    ACE_dict = {x:[] for x in dataset.name}
+    ACE_dict_lower = {x:[] for x in dataset.name}
+    ACE_dict_upper = {x:[] for x in dataset.name}
     s = 'length'
     c = 'light'
     for s in ['light', 'angle', 'length', 'position']:
         for c in ['light', 'angle', 'length', 'position']:
-            ACE = 0
+            ACE_lower = 0
+            ACE_upper = 0
+            
             dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=False)
             for x_batch, y_batch in tqdm.tqdm(iter(dataloader)):
                 if config["cuda"]:
@@ -295,22 +299,51 @@ def main():
 
                         """factor classification"""
                         score.append(torch.sigmoid(classifier(do_xhat))[:, dataset.name.index(c)])
-                    ACE += (score[0] - score[1]).sum()
-            ACE /= dataset.__len__()
-            ACE_dict[s] = ACE_dict.get(s) + [(c, ACE.abs().item())]
-    
-    ACE_mat = np.zeros((config["node"], config["node"]))
+                        
+                    ACE_lower += (score[0] - score[1]).sum()
+                    ACE_upper += (score[0] - score[1]).abs().sum()
+                    
+            ACE_lower /= dataset.__len__()
+            ACE_upper /= dataset.__len__()
+            ACE_dict_lower[s] = ACE_dict_lower.get(s) + [(c, ACE_lower.abs().item())]
+            ACE_dict_upper[s] = ACE_dict_upper.get(s) + [(c, ACE_upper.item())]
+    #%%
+    ACE_mat_lower = np.zeros((config["node"], config["node"]))
     for i, c in enumerate(dataset.name):
-        ACE_mat[i, :] = [x[1] for x in ACE_dict[c]]
+        ACE_mat_lower[i, :] = [x[1] for x in ACE_dict_lower[c]]
+    ACE_mat_upper = np.zeros((config["node"], config["node"]))
+    for i, c in enumerate(dataset.name):
+        ACE_mat_upper[i, :] = [x[1] for x in ACE_dict_upper[c]]
     
-    fig = viz_heatmap(np.flipud(ACE_mat), size=(7, 7))
-    wandb.log({'ACE': wandb.Image(fig)})
+    fig = viz_heatmap(np.flipud(ACE_mat_lower), size=(7, 7))
+    wandb.log({'ACE(lower)': wandb.Image(fig)})
+    fig = viz_heatmap(np.flipud(ACE_mat_upper), size=(7, 7))
+    wandb.log({'ACE(upper)': wandb.Image(fig)})
     
     # save as csv
-    pd.DataFrame(ACE_mat.round(3), columns=dataset.name, index=dataset.name).to_csv('./assets/ACE_{}.csv'.format(postfix))
+    pd.DataFrame(ACE_mat_lower.round(3), columns=dataset.name, index=dataset.name).to_csv('./assets/ACE_lower_{}.csv'.format(postfix))
+    pd.DataFrame(ACE_mat_upper.round(3), columns=dataset.name, index=dataset.name).to_csv('./assets/ACE_upper_{}.csv'.format(postfix))
     #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
+#%%
+model_names = ['vanilla', 'InfoMax', 'gam']
+lowers = {n : pd.read_csv('./assets/ACE_lower_{}.csv'.format(n), index_col=0) for n in model_names}
+uppers = {n : pd.read_csv('./assets/ACE_upper_{}.csv'.format(n), index_col=0) for n in model_names}
+
+fig, ax = plt.subplots(1, 4, figsize=(13, 3))
+for i, s in enumerate(dataset.name):
+    for n in model_names:
+        ax[i].plot(lowers[n].loc[s], label=n)
+    ax[i].set_ylabel('intervene: {}'.format(s))
+    ax[i].set_ylim(0, 1)
+    ax[i].legend()
+plt.tight_layout()
+# plt.savefig('./assets/ACE_metrics.png', bbox_inches='tight')
+# # plt.show()
+# plt.close()
+
+# wandb.log({'ACE metrics (comparison)': wandb.Image(fig)})
 #%%
