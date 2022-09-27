@@ -329,21 +329,40 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-model_names = ['vanilla', 'InfoMax', 'gam']
+# model_names = ['vanilla', 'InfoMax', 'causalvae', 'dear', 'gam']
+model_names = ['InfoMax', 'causalvae', 'dear', 'gam']
 lowers = {n : pd.read_csv('./assets/ACE_lower_{}.csv'.format(n), index_col=0) for n in model_names}
 uppers = {n : pd.read_csv('./assets/ACE_upper_{}.csv'.format(n), index_col=0) for n in model_names}
-
-fig, ax = plt.subplots(1, 4, figsize=(13, 3))
-for i, s in enumerate(dataset.name):
-    for n in model_names:
-        ax[i].plot(lowers[n].loc[s], label=n)
-    ax[i].set_ylabel('intervene: {}'.format(s))
-    ax[i].set_ylim(0, 1)
-    ax[i].legend()
+#%%
+markers = ['o', 's', '^', 'v']
+fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+for i, s in enumerate(['light', 'angle', 'length', 'position']):
+    for k, n in enumerate(model_names):
+        ax.flatten()[i].plot(lowers[n].loc[s], label=n, 
+                   marker=markers[k], linestyle='dashed', linewidth=1.5, markersize=8)
+    ax.flatten()[i].set_ylabel('intervene: {}'.format(s))
+    ax.flatten()[i].set_ylim(0, 1)
+lines, labels = ax.flatten()[-1].get_legend_handles_labels()
+# fig.legend(lines, labels, loc = 'upper right')
+fig.legend(lines, labels, bbox_to_anchor=(1.15, 0.55))
 plt.tight_layout()
-# plt.savefig('./assets/ACE_metrics.png', bbox_inches='tight')
-# # plt.show()
-# plt.close()
-
-# wandb.log({'ACE metrics (comparison)': wandb.Image(fig)})
+plt.savefig('./assets/ACE_lowers.png', bbox_inches='tight')
+# plt.show()
+plt.close()
+#%%
+markers = ['o', 's', '^', 'v']
+fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+for i, s in enumerate(['light', 'angle', 'length', 'position']):
+    for k, n in enumerate(model_names):
+        ax.flatten()[i].plot(uppers[n].loc[s], label=n, 
+                   marker=markers[k], linestyle='dashed', linewidth=1.5, markersize=8)
+    ax.flatten()[i].set_ylabel('intervene: {}'.format(s))
+    ax.flatten()[i].set_ylim(0, 1)
+lines, labels = ax.flatten()[-1].get_legend_handles_labels()
+# fig.legend(lines, labels, loc = 'upper right')
+fig.legend(lines, labels, bbox_to_anchor=(1.15, 0.55))
+plt.tight_layout()
+plt.savefig('./assets/ACE_uppers.png', bbox_inches='tight')
+# plt.show()
+plt.close()
 #%%
