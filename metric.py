@@ -309,11 +309,11 @@ def main():
             ACE_dict_upper[s] = ACE_dict_upper.get(s) + [(c, ACE_upper.item())]
     #%%
     ACE_mat_lower = np.zeros((config["node"], config["node"]))
-    for i, c in enumerate(dataset.name):
-        ACE_mat_lower[i, :] = [x[1] for x in ACE_dict_lower[c]]
+    for i, s in enumerate(dataset.name):
+        ACE_mat_lower[i, :] = [x[1] for x in ACE_dict_lower[s]]
     ACE_mat_upper = np.zeros((config["node"], config["node"]))
-    for i, c in enumerate(dataset.name):
-        ACE_mat_upper[i, :] = [x[1] for x in ACE_dict_upper[c]]
+    for i, s in enumerate(dataset.name):
+        ACE_mat_upper[i, :] = [x[1] for x in ACE_dict_upper[s]]
     
     fig = viz_heatmap(np.flipud(ACE_mat_lower), size=(7, 7))
     wandb.log({'ACE(lower)': wandb.Image(fig)})
@@ -329,12 +329,64 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-# model_names = ['vanilla', 'InfoMax', 'causalvae', 'dear', 'gam']
-model_names = ['InfoMax', 'causalvae', 'dear', 'gam']
+model_names = ['vanilla', 'InfoMax', 'causalvae', 'dear', 'gam']
+# model_names = ['InfoMax', 'causalvae', 'dear', 'gam']
 lowers = {n : pd.read_csv('./assets/ACE_lower_{}.csv'.format(n), index_col=0) for n in model_names}
 uppers = {n : pd.read_csv('./assets/ACE_upper_{}.csv'.format(n), index_col=0) for n in model_names}
 #%%
-markers = ['o', 's', '^', 'v']
+"""Interventional Robustness"""
+s = 'length'
+c = 'light'
+with open('./assets/ACE_IR.txt', 'w') as f:
+    for s in ['length', 'position']:
+        
+        c = s
+        f.write('CDM({}, {})'.format(c, s) + '\n')
+        for n in model_names:
+            line = ''
+            line += n + ', '
+            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+            f.write(line)
+            f.write('\n')
+        f.write('\n')
+        
+        for c in ['light', 'angle']:
+            f.write('CDM({}, {})'.format(c, s) + '\n')
+            for n in model_names:
+                line = ''
+                line += n + ', '
+                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+                f.write(line)
+                f.write('\n')
+            f.write('\n')
+#%%
+"""Counterfactual Generativeness"""
+s = 'length'
+c = 'light'
+with open('./assets/ACE_CG.txt', 'w') as f:
+    for s in ['light', 'angle']:
+        
+        c = s
+        f.write('CDM({}, {})'.format(c, s) + '\n')
+        for n in model_names:
+            line = ''
+            line += n + ', '
+            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+            f.write(line)
+            f.write('\n')
+        f.write('\n')
+        
+        for c in ['length', 'position']:
+            f.write('CDM({}, {})'.format(c, s) + '\n')
+            for n in model_names:
+                line = ''
+                line += n + ', '
+                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+                f.write(line)
+                f.write('\n')
+            f.write('\n')
+#%%
+markers = ['o', 's', '^', 'v', '*']
 fig, ax = plt.subplots(2, 2, figsize=(8, 8))
 for i, s in enumerate(['light', 'angle', 'length', 'position']):
     for k, n in enumerate(model_names):
@@ -350,7 +402,7 @@ plt.savefig('./assets/ACE_lowers.png', bbox_inches='tight')
 # plt.show()
 plt.close()
 #%%
-markers = ['o', 's', '^', 'v']
+markers = ['o', 's', '^', 'v', '*']
 fig, ax = plt.subplots(2, 2, figsize=(8, 8))
 for i, s in enumerate(['light', 'angle', 'length', 'position']):
     for k, n in enumerate(model_names):
