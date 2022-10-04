@@ -26,7 +26,7 @@ class LabeledDataset(Dataset):
         train_x = []
         for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
             train_x.append(np.array(
-                Image.open("../utils/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
+                Image.open("./utils/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
                     (config["image_size"], config["image_size"])))[:, :, :3])
         self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
         
@@ -57,7 +57,7 @@ class UnLabeledDataset(Dataset):
         train_x = []
         for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
             train_x.append(np.array(
-                Image.open("../utils/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
+                Image.open("./utils/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
                     (config["image_size"], config["image_size"])))[:, :, :3])
         self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
         
