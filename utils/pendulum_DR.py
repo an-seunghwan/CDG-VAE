@@ -37,8 +37,8 @@ test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 """Data Generating Process"""
 np.random.seed(1)
 
-light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 100)
-pendulum_angle_list = np.random.uniform(0, math.pi/4, 100)
+light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 10000)
+pendulum_angle_list = np.random.uniform(0, math.pi/4, 10000)
 # light_angle_list= np.linspace(math.pi/4, math.pi/2, 10)
 # pendulum_angle_list = np.linspace(0, math.pi/4, 10)
 
@@ -85,7 +85,6 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     objects.append(('length', xi_3))
     objects.append(('position', xi_4))
     objects.append(('target', tau))
-    name = '_'.join([str(round(j, 4)) for i,j in objects])
     
     plt.rcParams['figure.figsize'] = (1.0, 1.0)
     
@@ -104,20 +103,30 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     ax.set_ylim((-2, 22))
     plt.axis('off')
     
+    background = 0
     new = pd.DataFrame({i:j for i,j in objects}, index=[1])
     if (count + 1) % 4 == 0: # test
         if tau == 1 and (spurious_test + 1) % 2 == 0:
             ax.set_facecolor('blue') 
+            background = 1
         if tau == 1:
             spurious_test += 1
+        
+        objects.append(('background', background))
+        name = '_'.join([str(round(j, 4)) for i,j in objects])
         plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png', 
                     dpi=96, facecolor=ax.get_facecolor())
         test = test.append(new, ignore_index=True)
+        
     else: # train
         if tau == 1 and (spurious_train + 1) % 5 != 0:
             ax.set_facecolor('blue') 
+            background = 1
         if tau == 1:
             spurious_train += 1
+        
+        objects.append(('background', background))
+        name = '_'.join([str(round(j, 4)) for i,j in objects])
         plt.savefig('./causal_data/{}/train/a_'.format(foldername) + name +'.png', 
                     dpi=96, facecolor=ax.get_facecolor())
         train = train.append(new, ignore_index=True)

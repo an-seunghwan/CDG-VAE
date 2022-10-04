@@ -36,8 +36,8 @@ test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 """Data Generating Process"""
 np.random.seed(1)
 
-light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 100)
-pendulum_angle_list = np.random.uniform(0, math.pi/4, 100)
+light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 10000)
+pendulum_angle_list = np.random.uniform(0, math.pi/4, 10000)
 # light_angle_list= np.linspace(math.pi/4, math.pi/2, 10)
 # pendulum_angle_list = np.linspace(0, math.pi/4, 10)
 
