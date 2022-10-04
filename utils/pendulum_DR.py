@@ -18,14 +18,15 @@ import warnings
 warnings.filterwarnings('ignore')
 #%%
 """
-For main experiments and sample efficiency
+For Distributional Robustness (DR)
 Add followings to ./utils/pendulum.py
 [1]: measurement error
 [2]: environmental disturbance
 [3]: target label
+[4]: spurious correlations
 """
 #%%
-foldername = 'pendulum_real'
+foldername = 'pendulum_DR'
 if not os.path.exists('./causal_data/{}/'.format(foldername)): 
     os.makedirs('./causal_data/{}/train'.format(foldername))
     os.makedirs('./causal_data/{}/test'.format(foldername))
@@ -46,6 +47,8 @@ l = 9.5  # length of pendulum (including the red ball)
 b = -0.5
 #%%
 count = 0
+spurious_train = 0
+spurious_test = 0
 scale = 0.1 # measurement error scale
 for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angle_list)):
     objects = []
@@ -102,25 +105,34 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     plt.axis('off')
     
     new = pd.DataFrame({i:j for i,j in objects}, index=[1])
-    plt.axis('off')
-    if (count + 1) % 4 == 0:
-        plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png',dpi=96)
+    if (count + 1) % 4 == 0: # test
+        if tau == 1 and (spurious_test + 1) % 2 == 0:
+            ax.set_facecolor('blue') 
+        if tau == 1:
+            spurious_test += 1
+        plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png', 
+                    dpi=96, facecolor=ax.get_facecolor())
         test = test.append(new, ignore_index=True)
-    else:
-        plt.savefig('./causal_data/{}/train/a_'.format(foldername) + name +'.png',dpi=96)
+    else: # train
+        if tau == 1 and (spurious_train + 1) % 5 != 0:
+            ax.set_facecolor('blue') 
+        if tau == 1:
+            spurious_train += 1
+        plt.savefig('./causal_data/{}/train/a_'.format(foldername) + name +'.png', 
+                    dpi=96, facecolor=ax.get_facecolor())
         train = train.append(new, ignore_index=True)
     # plt.show()
     plt.clf()
     
     count += 1
 #%%
-train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
-len(train_imgs)
-test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
-len(test_imgs)
-label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-label.std(axis=0).round(2)
-label.mean(axis=0).round(2)
+# train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
+# len(train_imgs)
+# test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
+# len(test_imgs)
+# label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+# label.std(axis=0).round(2)
+# label.mean(axis=0).round(2)
 #%%
 # train_imgs = [x for x in os.listdir('./causal_data/pendulum/train') if x.endswith('.png')]
 # img = np.array(Image.open('./causal_data/pendulum/train/' + train_imgs[0]).resize((64, 64)))[:, :, :3].astype(float)
