@@ -114,13 +114,13 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     
     count += 1
 #%%
-train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
-len(train_imgs)
-test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
-len(test_imgs)
-label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-label.std(axis=0).round(2)
-label.mean(axis=0).round(2)
+# train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
+# len(train_imgs)
+# test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
+# len(test_imgs)
+# label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+# label.std(axis=0).round(2)
+# label.mean(axis=0).round(2)
 #%%
 # train_imgs = [x for x in os.listdir('./causal_data/pendulum/train') if x.endswith('.png')]
 # img = np.array(Image.open('./causal_data/pendulum/train/' + train_imgs[0]).resize((64, 64)))[:, :, :3].astype(float)
