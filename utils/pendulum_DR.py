@@ -84,7 +84,6 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     objects.append(('angle', xi_2))
     objects.append(('length', xi_3))
     objects.append(('position', xi_4))
-    objects.append(('target', tau))
     
     plt.rcParams['figure.figsize'] = (1.0, 1.0)
     
@@ -113,6 +112,8 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
             spurious_test += 1
         
         objects.append(('background', background))
+        objects.append(('target', tau))
+        
         name = '_'.join([str(round(j, 4)) for i,j in objects])
         plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png', 
                     dpi=96, facecolor=ax.get_facecolor())
@@ -126,6 +127,8 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
             spurious_train += 1
         
         objects.append(('background', background))
+        objects.append(('target', tau))
+        
         name = '_'.join([str(round(j, 4)) for i,j in objects])
         plt.savefig('./causal_data/{}/train/a_'.format(foldername) + name +'.png', 
                     dpi=96, facecolor=ax.get_facecolor())
