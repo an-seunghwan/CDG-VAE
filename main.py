@@ -68,7 +68,7 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--model', type=str, default='InfoMax', 
+    parser.add_argument('--model', type=str, default='GAM', 
                         help='Model options: VAE, InfoMax, GAM')
 
     # causal structure
@@ -100,9 +100,7 @@ def get_args(debug):
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
     parser.add_argument('--batch_size', default=128, type=int,
-                        help='batch size for unlabeled')
-    parser.add_argument('--batch_sizeL', default=32, type=int,
-                        help='batch size for labeled')
+                        help='batch size')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     parser.add_argument('--lr_D', default=0.0001, type=float, # InfoMax
