@@ -27,12 +27,16 @@ from modules.viz import (
 )
 
 from modules.model import (
-    VAE,
+    GAM,
 )
 
 from modules.datasets import (
     LabeledDataset, 
     UnLabeledDataset
+)
+
+from modules.train import (
+    train_GAM_semi
 )
 #%%
 import sys
@@ -49,7 +53,7 @@ except:
 run = wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["GAM", "semi"],
+    # tags=["semi"],
 )
 #%%
 import argparse
@@ -66,6 +70,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument('--model', type=str, default='GAM', 
+                        help='Model options: VAE, InfoMax, GAM')
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
@@ -95,13 +101,14 @@ def get_args(debug):
     # optimization options
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
+    parser.add_argument('--batch_size', default=128, type=int,
+                        help='batch size')
     parser.add_argument('--batch_sizeL', default=32, type=int,
                         help='batch size for labeled')
-    parser.add_argument('--batch_sizeU', default=128, type=int,
-                        help='batch size for unlabeled')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
+    # loss coefficients
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
@@ -113,7 +120,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -161,7 +168,7 @@ def main():
     m[51:, ...] = 1
     mask.append(m)
     
-    model = VAE(B, mask, config, device) 
+    model = GAM(B, mask, config, device) 
     model = model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -173,7 +180,7 @@ def main():
     model.train()
     
     for epoch in range(config["epochs"]):
-        logs, xhat = train(datasetL, datasetU, model, config, optimizer, device)
+        logs, xhat = train_GAM_semi(datasetL, datasetU, model, config, optimizer, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -202,14 +209,13 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    postfix = run.tags[0]
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format(postfix))
-    artifact = wandb.Artifact('model_{}'.format(postfix), 
+    torch.save(model.state_dict(), './assets/{}_semi.pth'.format(config["model"]))
+    artifact = wandb.Artifact('{}_semi'.format(config["model"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format(postfix))
-    artifact.add_file('./main_{}.py'.format(postfix))
-    artifact.add_file('./utils/model_{}.py'.format(postfix))
+    artifact.add_file('./assets/{}_semi.pth'.format(config["model"]))
+    artifact.add_file('./main_semi.py')
+    artifact.add_file('./utils/model.py')
     wandb.log_artifact(artifact)
     
     wandb.run.finish()
