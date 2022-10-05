@@ -215,7 +215,7 @@ def main():
                               metadata=config) # description=""
     artifact.add_file('./assets/{}.pth'.format(config["model"]))
     artifact.add_file('./main_semi.py')
-    artifact.add_file('./utils/model.py')
+    artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
     
     wandb.run.finish()
