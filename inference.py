@@ -16,14 +16,19 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-from utils.simulation import (
+from modules.simulation import (
     set_random_seed,
     is_dag,
 )
 
-from utils.viz import (
+from modules.viz import (
     viz_graph,
     viz_heatmap,
+)
+
+from modules.datasets import (
+    LabeledDataset, 
+    UnLabeledDataset,
 )
 #%%
 import sys
@@ -47,7 +52,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=16, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -57,16 +62,17 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
-    # postfix = 'vanilla' 
-    # postfix = 'InfoMax' 
-    postfix = 'gam' 
+    # model_name = 'VAE'
+    # model_name = 'InfoMax'
+    model_name = 'GAM'
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
+    assert model_name == config["model"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -79,67 +85,9 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     """dataset"""
-    class CustomDataset(Dataset): 
-        def __init__(self, config):
-            train_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/train') if x.endswith('png')]
-            train_x = []
-            for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-                train_x.append(np.array(
-                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((config["image_size"], config["image_size"]))
-                    )[:, :, :3])
-            self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
-            
-            label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            label = label - label.mean(axis=0)
-            self.std = label.std(axis=0)
-            """bounded label: normalize to (0, 1)"""
-            if config["label_normalization"]: 
-                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
-            self.y_data = label
-            self.name = ['light', 'angle', 'length', 'position']
-
-        def __len__(self): 
-            return len(self.x_data)
-
-        def __getitem__(self, idx): 
-            x = torch.FloatTensor(self.x_data[idx])
-            y = torch.FloatTensor(self.y_data[idx])
-            return x, y
-    
-    dataset = CustomDataset(config)
+    dataset = LabeledDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=False)
 
-    # """test dataset"""
-    # class TestCustomDataset(Dataset): 
-    #     def __init__(self, config):
-    #         test_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/test') if x.endswith('png')]
-    #         test_x = []
-    #         for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-    #             test_x.append(np.array(
-    #                 Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])).resize((config["image_size"], config["image_size"]))
-    #                 )[:, :, :3])
-    #         self.x_data = (np.array(test_x).astype(float) - 127.5) / 127.5
-            
-    #         label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
-    #         label = label - label.mean(axis=0)
-    #         self.std = label.std(axis=0)
-    #         """bounded label: normalize to (0, 1)"""
-    #         if config["label_normalization"]: 
-    #             label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
-    #         self.y_data = label
-    #         self.name = ['light', 'angle', 'length', 'position']
-
-    #     def __len__(self): 
-    #         return len(self.x_data)
-
-    #     def __getitem__(self, idx): 
-    #         x = torch.FloatTensor(self.x_data[idx])
-    #         y = torch.FloatTensor(self.y_data[idx])
-    #         return x, y
-    
-    # test_dataset = TestCustomDataset(config)
-    # test_dataloader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=False)
-    
     """
     Causal Adjacency Matrix
     light -> length
@@ -160,7 +108,15 @@ def main():
         B[:, mask] = B[:, mask] / indegree[mask]
     
     """import model"""
-    if postfix == 'gam':
+    if config["model"] == 'VAE':
+        from modules.model import VAE
+        model = VAE(B, config, device) 
+        
+    elif config["model"] == 'InfoMax':
+        from modules.model import VAE
+        model = VAE(B, config, device) 
+        
+    elif config["model"] == 'GAM':
         """Decoder masking"""
         mask = []
         # light
@@ -176,18 +132,18 @@ def main():
         m[51:, ...] = 1
         mask.append(m)
         
-        tmp = __import__("utils.model_{}".format(postfix), 
-                        fromlist=["utils.model_{}".format(postfix)])
-        VAE = getattr(tmp, "VAE")
-        model = VAE(B, mask, config, device).to(device)
+        from modules.model import GAM
+        model = GAM(B, mask, config, device) 
+    
     else:
-        from utils.model_base import VAE
-        model = VAE(B, config, device).to(device)
+        raise ValueError('Not supported model!')
+        
+    model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix)))
+        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix), map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
     
     model.eval()
     #%%
@@ -206,7 +162,7 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
         
-        if postfix == 'gam':    
+        if config["model"] == 'GAM':
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
         else:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -273,7 +229,7 @@ def main():
     align_latents = torch.cat(align_latents, dim=0)
     y_hat = torch.sigmoid(align_latents)
     align = F.binary_cross_entropy(y_hat, 
-                                   torch.tensor(dataset.y_data, dtype=torch.float32), 
+                                   torch.tensor(dataset.y_data[:, :4], dtype=torch.float32), 
                                    reduction='none').mean(axis=0)
     fig = plt.figure(figsize=(5, 3))
     plt.bar(np.arange(config["node"]), align.detach().numpy(),
@@ -299,7 +255,7 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    if postfix == 'gam':    
+    if config["model"] == 'GAM':
         mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
     else:
         mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -323,7 +279,7 @@ def main():
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     
-    if postfix == 'gam':
+    if config["model"] == 'GAM':
         xhats = [x.view(model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
         fig, ax = plt.subplots(1, 3, figsize=(7, 4))
         for i in range(len(config["factor"])):
@@ -357,7 +313,7 @@ def main():
             z = list(map(lambda x, layer: layer(x), z, model.flows))
             z = [z_[0] for z_ in z]
             
-            if postfix == 'gam':
+            if config["model"] == 'GAM':
                 _, do_xhat = model.decode(z)
                 do_xhat = do_xhat[0]
             else:
