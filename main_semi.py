@@ -70,8 +70,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--model', type=str, default='GAM', 
-                        help='Model options: VAE, InfoMax, GAM')
+    parser.add_argument('--model', type=str, default='GAM_semi', 
+                        help='Model options: VAE, InfoMax, GAM, GAM_semi')
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
@@ -209,11 +209,11 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/{}_semi.pth'.format(config["model"]))
-    artifact = wandb.Artifact('{}_semi'.format(config["model"]), 
+    torch.save(model.state_dict(), './assets/{}.pth'.format(config["model"]))
+    artifact = wandb.Artifact('{}'.format(config["model"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/{}_semi.pth'.format(config["model"]))
+    artifact.add_file('./assets/{}.pth'.format(config["model"]))
     artifact.add_file('./main_semi.py')
     artifact.add_file('./utils/model.py')
     wandb.log_artifact(artifact)
