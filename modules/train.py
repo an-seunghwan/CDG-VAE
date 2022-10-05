@@ -219,8 +219,8 @@ def train_GAM_semi(datasetL, datasetU, model, config, optimizer, device):
     for i in range(config["node"]):
         logs['posterior_variance{}'.format(i+1)] = []
     
+    dataloaderU = DataLoader(datasetU, batch_size=config["batch_size"], shuffle=True)
     dataloaderL = DataLoader(datasetL, batch_size=config["batch_sizeL"], shuffle=True)
-    dataloaderU = DataLoader(datasetU, batch_size=config["batch_sizeU"], shuffle=True)
         
     for x_batchU in tqdm.tqdm(iter(dataloaderU), desc="inner loop"):
         try:
