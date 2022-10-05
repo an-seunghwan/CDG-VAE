@@ -1,0 +1,6 @@
+100 samples accuracy mean: 0.821
+100 samples accuracy std: 0.021
+all samples accuracy mean: 0.904
+all samples accuracy std: 0.041
+sample efficiency mean: 0.910
+sample efficiency std: 0.053
