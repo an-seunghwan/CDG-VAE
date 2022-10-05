@@ -16,18 +16,23 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-from utils.simulation import (
+from modules.simulation import (
     set_random_seed,
     is_dag,
 )
 
-from utils.viz import (
+from modules.viz import (
     viz_graph,
     viz_heatmap,
 )
 
-from utils.model_base import (
+from modules.model import (
     VAE,
+)
+
+from modules.datasets import (
+    LabeledDataset, 
+    UnLabeledDataset
 )
 #%%
 import sys
@@ -44,110 +49,68 @@ except:
 run = wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["vanilla"],
+    tags=["GAM", "semi"],
 )
 #%%
 import argparse
+import ast
+
+def arg_as_list(s):
+    v = ast.literal_eval(s)
+    if type(v) is not list:
+        raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
+    return v
+
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
 
+    # causal structure
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
-    parser.add_argument("--scm", default='nonlinear', type=str,
+    parser.add_argument("--scm", default='linear', type=str,
                         help="SCM structure options: linear or nonlinear")
     parser.add_argument("--flow_num", default=1, type=int,
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
+    parser.add_argument("--factor", default=[1, 1, 2], type=arg_as_list, 
+                        help="Numbers of latents allocated to each factor in image")
+    
+    # data options
+    parser.add_argument('--labeled_ratio', default=0.1, type=float,
+                        help='ratio of labeled dataset for semi-supervised learning')
+    parser.add_argument('--DR', default=False, type=bool,
+                        help='If True, use dataset with spurious correlation')
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scaling adjacency matrix with in-degree")
-    
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
     
+    # optimization options
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=128, type=int,
-                        help='batch size')
+    parser.add_argument('--batch_sizeL', default=32, type=int,
+                        help='batch size for labeled')
+    parser.add_argument('--batch_sizeU', default=128, type=int,
+                        help='batch size for unlabeled')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
     
-    parser.add_argument('--beta', default=10, type=float,
+    parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=10, type=float,
+    parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
     
     if debug:
         return parser.parse_args(args=[])
     else:    
         return parser.parse_args()
-#%%
-def train(dataloader, model, config, optimizer, device):
-    logs = {
-        'loss': [], 
-        'recon': [],
-        'KL': [],
-        'alignment': [],
-    }
-    # for debugging
-    for i in range(config["node"]):
-        logs['posterior_variance{}'.format(i+1)] = []
-    
-    for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
-        
-        if config["cuda"]:
-            x_batch = x_batch.cuda()
-            y_batch = y_batch.cuda()
-        
-        with torch.autograd.set_detect_anomaly(True):    
-            optimizer.zero_grad()
-            
-            mean, logvar, _, _, _, _, align_latent, xhat = model(x_batch)
-            
-            loss_ = []
-            
-            """reconstruction"""
-            recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
-            # recon = F.mse_loss(xhat, x_batch)
-            loss_.append(('recon', recon))
-            
-            """KL-Divergence"""
-            KL = torch.pow(mean, 2).sum(axis=1)
-            KL -= logvar.sum(axis=1)
-            KL += torch.exp(logvar).sum(axis=1)
-            KL -= config["node"]
-            KL *= 0.5
-            KL = KL.mean()
-            loss_.append(('KL', KL))
-            
-            """Label Alignment : CrossEntropy"""
-            y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-            align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
-            loss_.append(('alignment', align))
-            
-            ### posterior variance: for debugging
-            var_ = torch.exp(logvar).mean(axis=0)
-            for i in range(config["node"]):
-                loss_.append(('posterior_variance{}'.format(i+1), var_[i]))
-            
-            loss = recon + config["beta"] * KL 
-            loss += config["lambda"] * align
-            loss_.append(('loss', loss))
-            
-            loss.backward()
-            optimizer.step()
-            
-        """accumulate losses"""
-        for x, y in loss_:
-            logs[x] = logs.get(x) + [y.item()]
-    
-    return logs, xhat
 #%%
 def main():
     config = vars(get_args(debug=False)) # default configuration
@@ -161,35 +124,8 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     """dataset"""
-    class CustomDataset(Dataset): 
-        def __init__(self, config):
-            train_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/train') if x.endswith('png')]
-            train_x = []
-            for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-                train_x.append(np.array(
-                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((config["image_size"], config["image_size"]))
-                    )[:, :, :3])
-            self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
-            
-            label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            label = label - label.mean(axis=0)
-            self.std = label.std(axis=0)
-            """bounded label: normalize to (0, 1)"""
-            if config["label_normalization"]: 
-                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
-            self.y_data = label
-            self.name = ['light', 'angle', 'length', 'position']
-
-        def __len__(self): 
-            return len(self.x_data)
-
-        def __getitem__(self, idx): 
-            x = torch.FloatTensor(self.x_data[idx])
-            y = torch.FloatTensor(self.y_data[idx])
-            return x, y
-    
-    dataset = CustomDataset(config)
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    datasetL = LabeledDataset(config)
+    datasetU = UnLabeledDataset(config)
     
     """
     Causal Adjacency Matrix
@@ -199,10 +135,10 @@ def main():
     angle -> position
     """
     B = torch.zeros(config["node"], config["node"])
-    B[dataset.name.index('light'), dataset.name.index('length')] = 1
-    B[dataset.name.index('light'), dataset.name.index('position')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
+    B[datasetL.name.index('light'), datasetL.name.index('length')] = 1
+    B[datasetL.name.index('light'), datasetL.name.index('position')] = 1
+    B[datasetL.name.index('angle'), datasetL.name.index('length')] = 1
+    B[datasetL.name.index('angle'), datasetL.name.index('position')] = 1
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -210,7 +146,22 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
-    model = VAE(B, config, device) 
+    """Decoder masking"""
+    mask = []
+    # light
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[:20, ...] = 1
+    mask.append(m)
+    # angle
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[20:51, ...] = 1
+    mask.append(m)
+    # shadow
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+    
+    model = VAE(B, mask, config, device) 
     model = model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -222,7 +173,7 @@ def main():
     model.train()
     
     for epoch in range(config["epochs"]):
-        logs, xhat = train(dataloader, model, config, optimizer, device)
+        logs, xhat = train(datasetL, datasetU, model, config, optimizer, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -258,7 +209,7 @@ def main():
                               metadata=config) # description=""
     artifact.add_file('./assets/model_{}.pth'.format(postfix))
     artifact.add_file('./main_{}.py'.format(postfix))
-    artifact.add_file('./utils/model_base.py')
+    artifact.add_file('./utils/model_{}.py'.format(postfix))
     wandb.log_artifact(artifact)
     
     wandb.run.finish()

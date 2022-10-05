@@ -205,9 +205,9 @@ class Discriminator(nn.Module):
         x = torch.cat((x, z), dim=1)
         return self.net(x)
 #%%
-class CADVAE(nn.Module):
+class GAM(nn.Module):
     def __init__(self, B, mask, config, device):
-        super(CADVAE, self).__init__()
+        super(GAM, self).__init__()
         
         self.config = config
         self.mask = mask
@@ -353,7 +353,7 @@ def main():
     m[51:, ...] = 1
     mask.append(m)
     
-    model = CADVAE(B, mask, config, 'cpu')
+    model = GAM(B, mask, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
     batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)

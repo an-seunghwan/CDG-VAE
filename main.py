@@ -1,5 +1,7 @@
 #%%
 import os
+
+from modules.train import train_GAM, train_InfoMax
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 #%%
@@ -16,23 +18,25 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-from utils.simulation import (
+from modules.simulation import (
     set_random_seed,
     is_dag,
 )
 
-from utils.viz import (
+from modules.viz import (
     viz_graph,
     viz_heatmap,
 )
 
-from utils.model_gam import (
-    VAE,
-)
-
-from utils.datasets import (
+from modules.datasets import (
     LabeledDataset, 
     UnLabeledDataset
+)
+
+from modules.train import (
+    train_VAE,
+    train_InfoMax,
+    train_GAM,
 )
 #%%
 import sys
@@ -49,7 +53,7 @@ except:
 run = wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["GAM", "semi"],
+    # tags=[""],
 )
 #%%
 import argparse
@@ -66,6 +70,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument('--model', type=str, default='VAE', 
+                        help='Model options: VAE, InfoMax, GAM')
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
@@ -80,7 +86,7 @@ def get_args(debug):
                         help="Numbers of latents allocated to each factor in image")
     
     # data options
-    parser.add_argument('--labeled_ratio', default=0.1, type=float,
+    parser.add_argument('--labeled_ratio', default=1, type=float,
                         help='ratio of labeled dataset for semi-supervised learning')
     parser.add_argument('--DR', default=False, type=bool,
                         help='If True, use dataset with spurious correlation')
@@ -112,82 +118,8 @@ def get_args(debug):
     else:    
         return parser.parse_args()
 #%%
-def train(datasetL, datasetU, model, config, optimizer, device):
-    logs = {
-        'loss': [], 
-        'recon': [],
-        'KL': [],
-        'alignment': [],
-    }
-    # for debugging
-    for i in range(config["node"]):
-        logs['posterior_variance{}'.format(i+1)] = []
-    
-    dataloaderL = DataLoader(datasetL, batch_size=config["batch_sizeL"], shuffle=True)
-    dataloaderU = DataLoader(datasetU, batch_size=config["batch_sizeU"], shuffle=True)
-        
-    for x_batchU in tqdm.tqdm(iter(dataloaderU), desc="inner loop"):
-        try:
-            x_batchL, y_batchL = next(iter_dataloaderL)
-        except:
-            iter_dataloaderL = iter(dataloaderL)
-            x_batchL, y_batchL = next(iter_dataloaderL)
-        
-        if config["cuda"]:
-            x_batchU = x_batchU.cuda()
-            x_batchL = x_batchL.cuda()
-            y_batchL = y_batchL.cuda()
-        
-        # with torch.autograd.set_detect_anomaly(True):    
-        optimizer.zero_grad()
-        
-        # unsupervised
-        mean, logvar, _, _, _, _, align_latent, _, xhat = model(x_batchU)
-        
-        loss_ = []
-        
-        """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batchU, 2).sum(axis=[1, 2, 3]).mean() 
-        # recon = F.mse_loss(xhat, x_batch)
-        loss_.append(('recon', recon))
-        
-        """KL-Divergence"""
-        KL = torch.pow(mean, 2).sum(axis=1)
-        KL -= logvar.sum(axis=1)
-        KL += torch.exp(logvar).sum(axis=1)
-        KL -= config["node"]
-        KL *= 0.5
-        KL = KL.mean()
-        loss_.append(('KL', KL))
-        
-        # supervised
-        """Label Alignment : CrossEntropy"""
-        _, _, _, _, align_latent, _ = model.encode(x_batchL, deterministic=True)
-        y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batchL[:, :config["node"]], reduction='none').sum(axis=1).mean()
-        loss_.append(('alignment', align))
-        
-        ### posterior variance: for debugging
-        var_ = torch.exp(logvar).mean(axis=0)
-        for i in range(config["node"]):
-            loss_.append(('posterior_variance{}'.format(i+1), var_[i]))
-        
-        loss = recon + config["beta"] * KL 
-        loss += config["lambda"] * align
-        # loss += config["alpha"] * L1
-        loss_.append(('loss', loss))
-        
-        loss.backward()
-        optimizer.step()
-            
-        """accumulate losses"""
-        for x, y in loss_:
-            logs[x] = logs.get(x) + [y.item()]
-    
-    return logs, xhat
-#%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -198,8 +130,8 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     """dataset"""
-    datasetL = LabeledDataset(config)
-    datasetU = UnLabeledDataset(config)
+    dataset = LabeledDataset(config)
+    dataloader = DataLoader(dataset, batch_size=config["batch_sizeL"], shuffle=True)
     
     """
     Causal Adjacency Matrix
@@ -209,10 +141,10 @@ def main():
     angle -> position
     """
     B = torch.zeros(config["node"], config["node"])
-    B[datasetL.name.index('light'), datasetL.name.index('length')] = 1
-    B[datasetL.name.index('light'), datasetL.name.index('position')] = 1
-    B[datasetL.name.index('angle'), datasetL.name.index('length')] = 1
-    B[datasetL.name.index('angle'), datasetL.name.index('position')] = 1
+    B[dataset.name.index('light'), dataset.name.index('length')] = 1
+    B[dataset.name.index('light'), dataset.name.index('position')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
+    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -220,22 +152,36 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
-    """Decoder masking"""
-    mask = []
-    # light
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[:20, ...] = 1
-    mask.append(m)
-    # angle
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[20:51, ...] = 1
-    mask.append(m)
-    # shadow
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
+    if config["model"] == 'VAE':
+        from modules.model import VAE
+        model = VAE(B, config, device) 
+        
+    elif config["model"] == 'InfoMax':
+        from modules.model import VAE
+        model = VAE(B, config, device) 
+        
+    elif config["model"] == 'GAM':
+        """Decoder masking"""
+        mask = []
+        # light
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[:20, ...] = 1
+        mask.append(m)
+        # angle
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[20:51, ...] = 1
+        mask.append(m)
+        # shadow
+        m = torch.zeros(config["image_size"], config["image_size"], 3)
+        m[51:, ...] = 1
+        mask.append(m)
+        
+        from modules.model import GAM
+        model = GAM(B, mask, config, device) 
     
-    model = VAE(B, mask, config, device) 
+    else:
+        raise ValueError('Not supported model!')
+        
     model = model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -247,7 +193,14 @@ def main():
     model.train()
     
     for epoch in range(config["epochs"]):
-        logs, xhat = train(datasetL, datasetU, model, config, optimizer, device)
+        if config["model"] == 'VAE':
+            logs, xhat = train_VAE(dataloader, model, config, optimizer, device)
+        elif config["model"] == 'InfoMax':
+            logs, xhat = train_InfoMax(dataloader, model, config, optimizer, device)
+        elif config["model"] == 'GAM':
+            logs, xhat = train_GAM(dataloader, model, config, optimizer, device)
+        else:
+            raise ValueError('Not supported model!')
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
@@ -276,14 +229,13 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    postfix = run.tags[0]
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format(postfix))
-    artifact = wandb.Artifact('model_{}'.format(postfix), 
+    torch.save(model.state_dict(), './assets/{}.pth'.format(config["model"]))
+    artifact = wandb.Artifact('{}'.format(config["model"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format(postfix))
-    artifact.add_file('./main_{}.py'.format(postfix))
-    artifact.add_file('./utils/model_{}.py'.format(postfix))
+    artifact.add_file('./assets/{}.pth'.format(config["model"]))
+    artifact.add_file('./main.py')
+    artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
     
     wandb.run.finish()

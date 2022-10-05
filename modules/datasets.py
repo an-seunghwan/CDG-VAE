@@ -18,15 +18,15 @@ class LabeledDataset(Dataset):
         else:
             foldername = 'pendulum_real'
             self.name = ['light', 'angle', 'length', 'position', 'target']
-        train_imgs = [x for x in os.listdir('./utils/causal_data/{}/train'.format(foldername)) if x.endswith('png')]
+        train_imgs = [x for x in os.listdir('./modules/causal_data/{}/train'.format(foldername)) if x.endswith('png')]
         
-        """labeled ratio"""
+        """labeled ratio: semi-supervised learning"""
         train_imgs = train_imgs[:int(len(train_imgs) * config["labeled_ratio"])]
         
         train_x = []
         for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
             train_x.append(np.array(
-                Image.open("./utils/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
+                Image.open("./modules/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
                     (config["image_size"], config["image_size"])))[:, :, :3])
         self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
         
@@ -52,12 +52,12 @@ class UnLabeledDataset(Dataset):
             foldername = 'pendulum_DR'
         else:
             foldername = 'pendulum_real'
-        train_imgs = [x for x in os.listdir('./utils/causal_data/{}/train'.format(foldername)) if x.endswith('png')]
+        train_imgs = [x for x in os.listdir('./modules/causal_data/{}/train'.format(foldername)) if x.endswith('png')]
         
         train_x = []
         for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
             train_x.append(np.array(
-                Image.open("./utils/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
+                Image.open("./modules/causal_data/{}/train/{}".format(foldername, train_imgs[i])).resize(
                     (config["image_size"], config["image_size"])))[:, :, :3])
         self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
         
