@@ -1,7 +1,5 @@
 #%%
 import os
-
-from modules.train import train_GAM, train_InfoMax
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 #%%
@@ -70,7 +68,7 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--model', type=str, default='VAE', 
+    parser.add_argument('--model', type=str, default='InfoMax', 
                         help='Model options: VAE, InfoMax, GAM')
 
     # causal structure
@@ -86,7 +84,7 @@ def get_args(debug):
                         help="Numbers of latents allocated to each factor in image")
     
     # data options
-    parser.add_argument('--labeled_ratio', default=1, type=float,
+    parser.add_argument('--labeled_ratio', default=1, type=float, # fully-supervised
                         help='ratio of labeled dataset for semi-supervised learning')
     parser.add_argument('--DR', default=False, type=bool,
                         help='If True, use dataset with spurious correlation')
@@ -103,15 +101,20 @@ def get_args(debug):
                         help='maximum iteration')
     parser.add_argument('--batch_sizeL', default=32, type=int,
                         help='batch size for labeled')
-    parser.add_argument('--batch_sizeU', default=128, type=int,
+    parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size for unlabeled')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
+    parser.add_argument('--lr_D', default=0.0001, type=float,
+                        help='learning rate for discriminator in InfoMax')
     
+    # loss coefficients
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
+    parser.add_argument('--gamma', default=1, type=float,
+                        help='weight of f-divergence (lower bound of information)')
     
     if debug:
         return parser.parse_args(args=[])
@@ -119,7 +122,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     wandb.config.update(config)
@@ -131,7 +134,7 @@ def main():
 
     """dataset"""
     dataset = LabeledDataset(config)
-    dataloader = DataLoader(dataset, batch_size=config["batch_sizeL"], shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """
     Causal Adjacency Matrix
@@ -152,13 +155,21 @@ def main():
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
     
+    """model"""
     if config["model"] == 'VAE':
         from modules.model import VAE
         model = VAE(B, config, device) 
         
     elif config["model"] == 'InfoMax':
-        from modules.model import VAE
+        from modules.model import VAE, Discriminator
         model = VAE(B, config, device) 
+        discriminator = Discriminator(config, device)
+        discriminator = discriminator.to(device)
+        
+        optimizer_D = torch.optim.Adam(
+            discriminator.parameters(), 
+            lr=config["lr_D"]
+        )
         
     elif config["model"] == 'GAM':
         """Decoder masking"""
@@ -196,7 +207,7 @@ def main():
         if config["model"] == 'VAE':
             logs, xhat = train_VAE(dataloader, model, config, optimizer, device)
         elif config["model"] == 'InfoMax':
-            logs, xhat = train_InfoMax(dataloader, model, config, optimizer, device)
+            logs, xhat = train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer_D, device)
         elif config["model"] == 'GAM':
             logs, xhat = train_GAM(dataloader, model, config, optimizer, device)
         else:
