@@ -28,7 +28,7 @@ from modules.viz import (
 
 from modules.datasets import (
     LabeledDataset, 
-    UnLabeledDataset
+    UnLabeledDataset,
 )
 
 from modules.train import (
@@ -99,13 +99,13 @@ def get_args(debug):
     # optimization options
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_sizeL', default=32, type=int,
-                        help='batch size for labeled')
     parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size for unlabeled')
+    parser.add_argument('--batch_sizeL', default=32, type=int,
+                        help='batch size for labeled')
     parser.add_argument('--lr', default=0.001, type=float,
                         help='learning rate')
-    parser.add_argument('--lr_D', default=0.0001, type=float,
+    parser.add_argument('--lr_D', default=0.0001, type=float, # InfoMax
                         help='learning rate for discriminator in InfoMax')
     
     # loss coefficients
@@ -113,7 +113,7 @@ def get_args(debug):
                         help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
-    parser.add_argument('--gamma', default=1, type=float,
+    parser.add_argument('--gamma', default=1, type=float, # InfoMax
                         help='weight of f-divergence (lower bound of information)')
     
     if debug:
