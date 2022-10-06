@@ -90,8 +90,8 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     """dataset"""
-    dataset = LabeledDataset(config)
-    test_dataset = TestDataset(config)
+    dataset = LabeledDataset(config, downstream=True)
+    test_dataset = TestDataset(config, downstream=True)
 
     """
     Causal Adjacency Matrix
