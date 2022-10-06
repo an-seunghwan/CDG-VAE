@@ -16,14 +16,20 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-from utils.simulation import (
+from modules.simulation import (
     set_random_seed,
     is_dag,
 )
 
-from utils.viz import (
+from modules.viz import (
     viz_graph,
     viz_heatmap,
+)
+
+from modules.datasets import (
+    LabeledDataset, 
+    UnLabeledDataset,
+    TestDataset,
 )
 #%%
 import sys
@@ -47,7 +53,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=16, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -59,17 +65,15 @@ def main():
     #%%
     config = vars(get_args(debug=True)) # default configuration
     
-    # postfix = 'vanilla' # 9
-    # postfix = 'InfoMax' # 13
-    postfix = 'gam' # 16
+    # model_name = 'VAE'
+    # model_name = 'InfoMax'
+    model_name = 'GAM'
     
     """model load"""
-    try:
-        artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix, config["num"]), type='model')
-    except:
-        artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_{}:v{}'.format(postfix.lower(), config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
+    assert model_name == config["model"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -82,67 +86,9 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     """dataset"""
-    class CustomDataset(Dataset): 
-        def __init__(self, config):
-            train_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/train') if x.endswith('png')]
-            train_x = []
-            for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-                train_x.append(np.array(
-                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((config["image_size"], config["image_size"]))
-                    )[:, :, :3])
-            self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
-            
-            label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            label = label - label.mean(axis=0)
-            self.std = label.std(axis=0)
-            """bounded label: normalize to (0, 1)"""
-            if config["label_normalization"]: 
-                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
-            self.y_data = label
-            self.name = ['light', 'angle', 'length', 'position']
+    dataset = LabeledDataset(config, downstream=False)
+    test_dataset = TestDataset(config, downstream=False)
 
-        def __len__(self): 
-            return len(self.x_data)
-
-        def __getitem__(self, idx): 
-            x = torch.FloatTensor(self.x_data[idx])
-            y = torch.FloatTensor(self.y_data[idx])
-            return x, y
-    
-    dataset = CustomDataset(config)
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=False)
-
-    # """test dataset"""
-    # class TestCustomDataset(Dataset): 
-    #     def __init__(self, config):
-    #         test_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/test') if x.endswith('png')]
-    #         test_x = []
-    #         for i in tqdm.tqdm(range(len(test_imgs)), desc="test data loading"):
-    #             test_x.append(np.array(
-    #                 Image.open("./utils/causal_data/pendulum/test/{}".format(test_imgs[i])).resize((config["image_size"], config["image_size"]))
-    #                 )[:, :, :3])
-    #         self.x_data = (np.array(test_x).astype(float) - 127.5) / 127.5
-            
-    #         label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
-    #         label = label - label.mean(axis=0)
-    #         self.std = label.std(axis=0)
-    #         """bounded label: normalize to (0, 1)"""
-    #         if config["label_normalization"]: 
-    #             label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
-    #         self.y_data = label
-    #         self.name = ['light', 'angle', 'length', 'position']
-
-    #     def __len__(self): 
-    #         return len(self.x_data)
-
-    #     def __getitem__(self, idx): 
-    #         x = torch.FloatTensor(self.x_data[idx])
-    #         y = torch.FloatTensor(self.y_data[idx])
-    #         return x, y
-    
-    # test_dataset = TestCustomDataset(config)
-    # test_dataloader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=False)
-    
     """
     Causal Adjacency Matrix
     light -> length
@@ -163,7 +109,15 @@ def main():
         B[:, mask] = B[:, mask] / indegree[mask]
     
     """import model"""
-    if postfix == 'gam':
+    if config["model"] == 'VAE':
+        from modules.model import VAE
+        model = VAE(B, config, device) 
+        
+    elif config["model"] == 'InfoMax':
+        from modules.model import VAE
+        model = VAE(B, config, device) 
+        
+    elif config["model"] == 'GAM':
         """Decoder masking"""
         mask = []
         # light
@@ -179,25 +133,25 @@ def main():
         m[51:, ...] = 1
         mask.append(m)
         
-        tmp = __import__("utils.model_{}".format(postfix), 
-                        fromlist=["utils.model_{}".format(postfix)])
-        VAE = getattr(tmp, "VAE")
-        model = VAE(B, mask, config, device).to(device)
+        from modules.model import GAM
+        model = GAM(B, mask, config, device) 
+    
     else:
-        from utils.model_base import VAE
-        model = VAE(B, config, device).to(device)
+        raise ValueError('Not supported model!')
+        
+    model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix)))
+        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format(postfix), map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
     
     model.eval()
     #%%
     """import baseline classifier"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_classifier:v{}'.format(0), type='model')
     model_dir = artifact.download()
-    from utils.model_classifier import Classifier
+    from modules.model import Classifier
     """masking"""
     # if config["dataset"] == 'pendulum':
     mask = []
@@ -227,6 +181,7 @@ def main():
         classifier.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('classifier'), map_location=torch.device('cpu')))
     #%%
     """latent range"""
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     latents = []
     for x_batch, y_batch in tqdm.tqdm(iter(dataloader)):
         if config["cuda"]:
@@ -234,7 +189,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            if postfix == 'gam':    
+            if config["model"] == 'GAM':
                 _, _, _, _, latent, _, _, _, _ = model(x_batch, deterministic=True)
             else:
                 _, _, _, _, latent, _, _, _ = model(x_batch, deterministic=True)
@@ -246,23 +201,23 @@ def main():
     latent_max = latents.numpy().max(axis=0)
     #%%
     """metric"""
-    ACE_dict_lower = {x:[] for x in dataset.name}
-    ACE_dict_upper = {x:[] for x in dataset.name}
+    CDM_dict_lower = {x:[] for x in dataset.name}
+    CDM_dict_upper = {x:[] for x in dataset.name}
     s = 'length'
     c = 'light'
     for s in ['light', 'angle', 'length', 'position']:
         for c in ['light', 'angle', 'length', 'position']:
-            ACE_lower = 0
-            ACE_upper = 0
+            CDM_lower = 0
+            CDM_upper = 0
             
             dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=False)
-            for x_batch, y_batch in tqdm.tqdm(iter(dataloader)):
+            for x_batch, y_batch in tqdm.tqdm(iter(dataloader), desc="{} | {}".format(c, s)):
                 if config["cuda"]:
                     x_batch = x_batch.cuda()
                     y_batch = y_batch.cuda()
 
                 with torch.no_grad():
-                    if postfix == 'gam':    
+                    if config["model"] == 'GAM':
                         # mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
                         mean, logvar, epsilon, orig_latent, latent, logdet = model.encode(x_batch, deterministic=True)
                     else:
@@ -292,7 +247,7 @@ def main():
                         z = list(map(lambda x, layer: layer(x), z, model.flows))
                         z = [z_[0] for z_ in z]
                         
-                        if postfix == 'gam':
+                        if config["model"] == 'GAM':
                             _, do_xhat = model.decode(z)
                         else:
                             do_xhat = model.decoder(torch.cat(z, dim=1)).view(-1, config["image_size"], config["image_size"], 3)
@@ -300,121 +255,125 @@ def main():
                         """factor classification"""
                         score.append(torch.sigmoid(classifier(do_xhat))[:, dataset.name.index(c)])
                         
-                    ACE_lower += (score[0] - score[1]).sum()
-                    ACE_upper += (score[0] - score[1]).abs().sum()
+                    CDM_lower += (score[0] - score[1]).sum()
+                    CDM_upper += (score[0] - score[1]).abs().sum()
                     
-            ACE_lower /= dataset.__len__()
-            ACE_upper /= dataset.__len__()
-            ACE_dict_lower[s] = ACE_dict_lower.get(s) + [(c, ACE_lower.abs().item())]
-            ACE_dict_upper[s] = ACE_dict_upper.get(s) + [(c, ACE_upper.item())]
+            CDM_lower /= dataset.__len__()
+            CDM_upper /= dataset.__len__()
+            CDM_dict_lower[s] = CDM_dict_lower.get(s) + [(c, CDM_lower.abs().item())]
+            CDM_dict_upper[s] = CDM_dict_upper.get(s) + [(c, CDM_upper.item())]
     #%%
-    ACE_mat_lower = np.zeros((config["node"], config["node"]))
-    for i, s in enumerate(dataset.name):
-        ACE_mat_lower[i, :] = [x[1] for x in ACE_dict_lower[s]]
-    ACE_mat_upper = np.zeros((config["node"], config["node"]))
-    for i, s in enumerate(dataset.name):
-        ACE_mat_upper[i, :] = [x[1] for x in ACE_dict_upper[s]]
+    CDM_mat_lower = np.zeros((config["node"], config["node"]))
+    for i, s in enumerate(dataset.name[:4]):
+        CDM_mat_lower[i, :] = [x[1] for x in CDM_dict_lower[s]]
+    CDM_mat_upper = np.zeros((config["node"], config["node"]))
+    for i, s in enumerate(dataset.name[:4]):
+        CDM_mat_upper[i, :] = [x[1] for x in CDM_dict_upper[s]]
     
-    fig = viz_heatmap(np.flipud(ACE_mat_lower), size=(7, 7))
-    wandb.log({'ACE(lower)': wandb.Image(fig)})
-    fig = viz_heatmap(np.flipud(ACE_mat_upper), size=(7, 7))
-    wandb.log({'ACE(upper)': wandb.Image(fig)})
+    fig = viz_heatmap(np.flipud(CDM_mat_lower), size=(7, 7))
+    wandb.log({'CDM(lower)': wandb.Image(fig)})
+    fig = viz_heatmap(np.flipud(CDM_mat_upper), size=(7, 7))
+    wandb.log({'CDM(upper)': wandb.Image(fig)})
     
+    if not os.path.exists('./assets/CDM/'): 
+        os.makedirs('./assets/CDM/')
     # save as csv
-    pd.DataFrame(ACE_mat_lower.round(3), columns=dataset.name, index=dataset.name).to_csv('./assets/ACE_lower_{}.csv'.format(postfix))
-    pd.DataFrame(ACE_mat_upper.round(3), columns=dataset.name, index=dataset.name).to_csv('./assets/ACE_upper_{}.csv'.format(postfix))
+    df = pd.DataFrame(CDM_mat_lower.round(3), columns=dataset.name[:4], index=dataset.name[:4])
+    df.to_csv('./assets/CDM/lower_{}_{}_{}.csv'.format(model_name, config["scm"], config['num']))
+    df = pd.DataFrame(CDM_mat_upper.round(3), columns=dataset.name[:4], index=dataset.name[:4])
+    df.to_csv('./assets/CDM/upper_{}_{}_{}.csv'.format(model_name, config["scm"], config['num']))
     #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
 #%%
-model_names = ['vanilla', 'InfoMax', 'causalvae', 'dear', 'gam']
-# model_names = ['InfoMax', 'causalvae', 'dear', 'gam']
-lowers = {n : pd.read_csv('./assets/ACE_lower_{}.csv'.format(n), index_col=0) for n in model_names}
-uppers = {n : pd.read_csv('./assets/ACE_upper_{}.csv'.format(n), index_col=0) for n in model_names}
-#%%
-"""Interventional Robustness"""
-s = 'length'
-c = 'light'
-with open('./assets/ACE_IR.txt', 'w') as f:
-    for s in ['length', 'position']:
+# model_names = ['vanilla', 'InfoMax', 'causalvae', 'dear', 'gam']
+# # model_names = ['InfoMax', 'causalvae', 'dear', 'gam']
+# lowers = {n : pd.read_csv('./assets/ACE_lower_{}.csv'.format(n), index_col=0) for n in model_names}
+# uppers = {n : pd.read_csv('./assets/ACE_upper_{}.csv'.format(n), index_col=0) for n in model_names}
+# #%%
+# """Interventional Robustness"""
+# s = 'length'
+# c = 'light'
+# with open('./assets/ACE_IR.txt', 'w') as f:
+#     for s in ['length', 'position']:
         
-        c = s
-        f.write('CDM({}, {})'.format(c, s) + '\n')
-        for n in model_names:
-            line = ''
-            line += n + ', '
-            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-            f.write(line)
-            f.write('\n')
-        f.write('\n')
+#         c = s
+#         f.write('CDM({}, {})'.format(c, s) + '\n')
+#         for n in model_names:
+#             line = ''
+#             line += n + ', '
+#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#             f.write(line)
+#             f.write('\n')
+#         f.write('\n')
         
-        for c in ['light', 'angle']:
-            f.write('CDM({}, {})'.format(c, s) + '\n')
-            for n in model_names:
-                line = ''
-                line += n + ', '
-                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-                f.write(line)
-                f.write('\n')
-            f.write('\n')
-#%%
-"""Counterfactual Generativeness"""
-s = 'length'
-c = 'light'
-with open('./assets/ACE_CG.txt', 'w') as f:
-    for s in ['light', 'angle']:
+#         for c in ['light', 'angle']:
+#             f.write('CDM({}, {})'.format(c, s) + '\n')
+#             for n in model_names:
+#                 line = ''
+#                 line += n + ', '
+#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#                 f.write(line)
+#                 f.write('\n')
+#             f.write('\n')
+# #%%
+# """Counterfactual Generativeness"""
+# s = 'length'
+# c = 'light'
+# with open('./assets/ACE_CG.txt', 'w') as f:
+#     for s in ['light', 'angle']:
         
-        c = s
-        f.write('CDM({}, {})'.format(c, s) + '\n')
-        for n in model_names:
-            line = ''
-            line += n + ', '
-            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-            f.write(line)
-            f.write('\n')
-        f.write('\n')
+#         c = s
+#         f.write('CDM({}, {})'.format(c, s) + '\n')
+#         for n in model_names:
+#             line = ''
+#             line += n + ', '
+#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#             f.write(line)
+#             f.write('\n')
+#         f.write('\n')
         
-        for c in ['length', 'position']:
-            f.write('CDM({}, {})'.format(c, s) + '\n')
-            for n in model_names:
-                line = ''
-                line += n + ', '
-                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-                f.write(line)
-                f.write('\n')
-            f.write('\n')
-#%%
-markers = ['o', 's', '^', 'v', '*']
-fig, ax = plt.subplots(2, 2, figsize=(8, 8))
-for i, s in enumerate(['light', 'angle', 'length', 'position']):
-    for k, n in enumerate(model_names):
-        ax.flatten()[i].plot(lowers[n].loc[s], label=n, 
-                   marker=markers[k], linestyle='dashed', linewidth=1.5, markersize=8)
-    ax.flatten()[i].set_ylabel('intervene: {}'.format(s))
-    ax.flatten()[i].set_ylim(0, 1)
-lines, labels = ax.flatten()[-1].get_legend_handles_labels()
-# fig.legend(lines, labels, loc = 'upper right')
-fig.legend(lines, labels, bbox_to_anchor=(1.15, 0.55))
-plt.tight_layout()
-plt.savefig('./assets/ACE_lowers.png', bbox_inches='tight')
-# plt.show()
-plt.close()
-#%%
-markers = ['o', 's', '^', 'v', '*']
-fig, ax = plt.subplots(2, 2, figsize=(8, 8))
-for i, s in enumerate(['light', 'angle', 'length', 'position']):
-    for k, n in enumerate(model_names):
-        ax.flatten()[i].plot(uppers[n].loc[s], label=n, 
-                   marker=markers[k], linestyle='dashed', linewidth=1.5, markersize=8)
-    ax.flatten()[i].set_ylabel('intervene: {}'.format(s))
-    ax.flatten()[i].set_ylim(0, 1)
-lines, labels = ax.flatten()[-1].get_legend_handles_labels()
-# fig.legend(lines, labels, loc = 'upper right')
-fig.legend(lines, labels, bbox_to_anchor=(1.15, 0.55))
-plt.tight_layout()
-plt.savefig('./assets/ACE_uppers.png', bbox_inches='tight')
-# plt.show()
-plt.close()
-#%%
+#         for c in ['length', 'position']:
+#             f.write('CDM({}, {})'.format(c, s) + '\n')
+#             for n in model_names:
+#                 line = ''
+#                 line += n + ', '
+#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#                 f.write(line)
+#                 f.write('\n')
+#             f.write('\n')
+# #%%
+# markers = ['o', 's', '^', 'v', '*']
+# fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+# for i, s in enumerate(['light', 'angle', 'length', 'position']):
+#     for k, n in enumerate(model_names):
+#         ax.flatten()[i].plot(lowers[n].loc[s], label=n, 
+#                    marker=markers[k], linestyle='dashed', linewidth=1.5, markersize=8)
+#     ax.flatten()[i].set_ylabel('intervene: {}'.format(s))
+#     ax.flatten()[i].set_ylim(0, 1)
+# lines, labels = ax.flatten()[-1].get_legend_handles_labels()
+# # fig.legend(lines, labels, loc = 'upper right')
+# fig.legend(lines, labels, bbox_to_anchor=(1.15, 0.55))
+# plt.tight_layout()
+# plt.savefig('./assets/ACE_lowers.png', bbox_inches='tight')
+# # plt.show()
+# plt.close()
+# #%%
+# markers = ['o', 's', '^', 'v', '*']
+# fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+# for i, s in enumerate(['light', 'angle', 'length', 'position']):
+#     for k, n in enumerate(model_names):
+#         ax.flatten()[i].plot(uppers[n].loc[s], label=n, 
+#                    marker=markers[k], linestyle='dashed', linewidth=1.5, markersize=8)
+#     ax.flatten()[i].set_ylabel('intervene: {}'.format(s))
+#     ax.flatten()[i].set_ylim(0, 1)
+# lines, labels = ax.flatten()[-1].get_legend_handles_labels()
+# # fig.legend(lines, labels, loc = 'upper right')
+# fig.legend(lines, labels, bbox_to_anchor=(1.15, 0.55))
+# plt.tight_layout()
+# plt.savefig('./assets/ACE_uppers.png', bbox_inches='tight')
+# # plt.show()
+# plt.close()
+# #%%
