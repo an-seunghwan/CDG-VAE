@@ -1,4 +1,5 @@
 #%%
+from turtle import down
 import tqdm
 from PIL import Image
 import os
@@ -11,7 +12,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 #%%
 class LabeledDataset(Dataset): 
-    def __init__(self, config):
+    def __init__(self, config, downstream=False):
         if config["DR"]:
             foldername = 'pendulum_DR'
             self.name = ['light', 'angle', 'length', 'position', 'background', 'target']
@@ -31,11 +32,12 @@ class LabeledDataset(Dataset):
         self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
         
         label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-        label = label - label.mean(axis=0)
-        self.std = label.std(axis=0)
-        """bounded label: normalize to (0, 1)"""
-        if config["label_normalization"]: 
-            label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
+        if not downstream:
+            label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
+            """bounded label: normalize to (0, 1)"""
+            if config["label_normalization"]: 
+                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
         self.y_data = label
 
     def __len__(self): 
@@ -69,7 +71,7 @@ class UnLabeledDataset(Dataset):
         return x
 #%%
 class TestDataset(Dataset): 
-    def __init__(self, config):
+    def __init__(self, config, downstream=False):
         if config["DR"]:
             foldername = 'pendulum_DR'
             self.name = ['light', 'angle', 'length', 'position', 'background', 'target']
@@ -86,11 +88,12 @@ class TestDataset(Dataset):
         self.x_data = (np.array(test_x).astype(float) - 127.5) / 127.5
         
         label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
-        label = label - label.mean(axis=0)
-        self.std = label.std(axis=0)
-        """bounded label: normalize to (0, 1)"""
-        if config["label_normalization"]: 
-            label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
+        if not downstream:
+            label = label - label.mean(axis=0)
+            self.std = label.std(axis=0)
+            """bounded label: normalize to (0, 1)"""
+            if config["label_normalization"]: 
+                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
         self.y_data = label
 
     def __len__(self): 
