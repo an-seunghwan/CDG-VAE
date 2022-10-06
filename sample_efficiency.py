@@ -413,7 +413,7 @@ for n in model_names:
 with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
     f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
     for key, value in se_result.items():
-        f.write('{}: '.format(key))
-        f.write(', '.join([x.split(': ')[-1] for x in value]))
-        f.write('\n')
+        f.write('{}) & '.format(key.replace('_', '(')))
+        f.write(' & '.join([str(round(float(x.split(': ')[-1]) * 100, 2)) for x in value]))
+        f.write(' \\\\\n')
 #%%
