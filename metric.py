@@ -287,63 +287,74 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-# model_names = ['vanilla', 'InfoMax', 'causalvae', 'dear', 'gam']
-# # model_names = ['InfoMax', 'causalvae', 'dear', 'gam']
-# lowers = {n : pd.read_csv('./assets/ACE_lower_{}.csv'.format(n), index_col=0) for n in model_names}
-# uppers = {n : pd.read_csv('./assets/ACE_upper_{}.csv'.format(n), index_col=0) for n in model_names}
-# #%%
-# """Interventional Robustness"""
-# s = 'length'
-# c = 'light'
-# with open('./assets/ACE_IR.txt', 'w') as f:
-#     for s in ['length', 'position']:
+model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
+CDM_list = sorted(os.listdir('./assets/CDM/'))
+CDM_lower_list = [x for x in CDM_list if x.startswith('lower')]
+CDM_upper_list = [x for x in CDM_list if x.startswith('upper')]
+
+lowers = {}
+for n in model_names:
+    file = [x for x in CDM_lower_list if n in '_'.join(x.split('_')[:-1])]
+    if n == 'VAE':
+        file = file[1:]
+    for f in file:
+        lowers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
+uppers = {}
+for n in model_names:
+    file = [x for x in CDM_upper_list if n in '_'.join(x.split('_')[:-1])]
+    if n == 'VAE':
+        file = file[1:]
+    for f in file:
+        uppers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
+#%%
+"""Interventional Robustness"""
+with open('./assets/CDM/IR.txt', 'w') as f:
+    for s in ['length', 'position']:
         
-#         c = s
-#         f.write('CDM({}, {})'.format(c, s) + '\n')
-#         for n in model_names:
-#             line = ''
-#             line += n + ', '
-#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-#             f.write(line)
-#             f.write('\n')
-#         f.write('\n')
+        c = s
+        f.write('CDM({}, {})'.format(c, s) + '\n')
+        for n in uppers.keys():
+            line = ''
+            line += n + ', '
+            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+            f.write(line)
+            f.write('\n')
+        f.write('\n')
         
-#         for c in ['light', 'angle']:
-#             f.write('CDM({}, {})'.format(c, s) + '\n')
-#             for n in model_names:
-#                 line = ''
-#                 line += n + ', '
-#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-#                 f.write(line)
-#                 f.write('\n')
-#             f.write('\n')
-# #%%
-# """Counterfactual Generativeness"""
-# s = 'length'
-# c = 'light'
-# with open('./assets/ACE_CG.txt', 'w') as f:
-#     for s in ['light', 'angle']:
+        for c in ['light', 'angle']:
+            f.write('CDM({}, {})'.format(c, s) + '\n')
+            for n in uppers.keys():
+                line = ''
+                line += n + ', '
+                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+                f.write(line)
+                f.write('\n')
+            f.write('\n')
+#%%
+"""Counterfactual Generativeness"""
+with open('./assets/CDM/CG.txt', 'w') as f:
+    for s in ['light', 'angle']:
         
-#         c = s
-#         f.write('CDM({}, {})'.format(c, s) + '\n')
-#         for n in model_names:
-#             line = ''
-#             line += n + ', '
-#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-#             f.write(line)
-#             f.write('\n')
-#         f.write('\n')
+        c = s
+        f.write('CDM({}, {})'.format(c, s) + '\n')
+        for n in uppers.keys():
+            line = ''
+            line += n + ', '
+            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+            f.write(line)
+            f.write('\n')
+        f.write('\n')
         
-#         for c in ['length', 'position']:
-#             f.write('CDM({}, {})'.format(c, s) + '\n')
-#             for n in model_names:
-#                 line = ''
-#                 line += n + ', '
-#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-#                 f.write(line)
-#                 f.write('\n')
-#             f.write('\n')
-# #%%
+        for c in ['length', 'position']:
+            f.write('CDM({}, {})'.format(c, s) + '\n')
+            for n in uppers.keys():
+                line = ''
+                line += n + ', '
+                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+                f.write(line)
+                f.write('\n')
+            f.write('\n')
+#%%
 # markers = ['o', 's', '^', 'v', '*']
 # fig, ax = plt.subplots(2, 2, figsize=(8, 8))
 # for i, s in enumerate(['light', 'angle', 'length', 'position']):
@@ -375,4 +386,4 @@ if __name__ == '__main__':
 # plt.savefig('./assets/ACE_uppers.png', bbox_inches='tight')
 # # plt.show()
 # plt.close()
-# #%%
+#%%
