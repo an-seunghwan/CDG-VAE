@@ -57,7 +57,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=0, 
+    parser.add_argument('--num', type=int, default=1, 
                         help='model version')
 
     if debug:
@@ -71,7 +71,8 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
+    # model_name = 'GAM'
+    model_name = 'GAM_semi'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
@@ -121,7 +122,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] == 'GAM':
+    elif config["model"] in ['GAM', 'GAM_semi']:
         """Decoder masking"""
         mask = []
         # light

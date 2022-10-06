@@ -52,7 +52,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=0, 
+    parser.add_argument('--num', type=int, default=1, 
                         help='model version')
 
     if debug:
@@ -62,11 +62,12 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
+    # model_name = 'GAM'
+    model_name = 'GAM_semi'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
@@ -116,7 +117,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] == 'GAM':
+    elif config["model"] in ['GAM', 'GAM_semi']:
         """Decoder masking"""
         mask = []
         # light
@@ -162,7 +163,7 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
         
-        if config["model"] == 'GAM':
+        if config["model"] in ['GAM', 'GAM_semi']:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
         else:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -255,7 +256,7 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    if config["model"] == 'GAM':
+    if config["model"] in ['GAM', 'GAM_semi']:
         mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
     else:
         mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -279,7 +280,7 @@ def main():
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     
-    if config["model"] == 'GAM':
+    if config["model"] in ['GAM', 'GAM_semi']:
         xhats = [x.view(model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
         fig, ax = plt.subplots(1, 3, figsize=(7, 4))
         for i in range(len(config["factor"])):
@@ -313,7 +314,7 @@ def main():
             z = list(map(lambda x, layer: layer(x), z, model.flows))
             z = [z_[0] for z_ in z]
             
-            if config["model"] == 'GAM':
+            if config["model"] in ['GAM', 'GAM_semi']:
                 _, do_xhat = model.decode(z)
                 do_xhat = do_xhat[0]
             else:

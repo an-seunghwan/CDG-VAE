@@ -67,7 +67,8 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
+    # model_name = 'GAM'
+    model_name = 'GAM_semi'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
@@ -117,7 +118,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] == 'GAM':
+    elif config["model"] in ['GAM', 'GAM_semi']:
         """Decoder masking"""
         mask = []
         # light
@@ -189,7 +190,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            if config["model"] == 'GAM':
+            if config["model"] in ['GAM', 'GAM_semi']:
                 _, _, _, _, latent, _, _, _, _ = model(x_batch, deterministic=True)
             else:
                 _, _, _, _, latent, _, _, _ = model(x_batch, deterministic=True)
@@ -203,8 +204,6 @@ def main():
     """metric"""
     CDM_dict_lower = {x:[] for x in dataset.name}
     CDM_dict_upper = {x:[] for x in dataset.name}
-    s = 'length'
-    c = 'light'
     for s in ['light', 'angle', 'length', 'position']:
         for c in ['light', 'angle', 'length', 'position']:
             CDM_lower = 0
@@ -217,7 +216,7 @@ def main():
                     y_batch = y_batch.cuda()
 
                 with torch.no_grad():
-                    if config["model"] == 'GAM':
+                    if config["model"] in ['GAM', 'GAM_semi']:
                         # mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
                         mean, logvar, epsilon, orig_latent, latent, logdet = model.encode(x_batch, deterministic=True)
                     else:
@@ -247,7 +246,7 @@ def main():
                         z = list(map(lambda x, layer: layer(x), z, model.flows))
                         z = [z_[0] for z_ in z]
                         
-                        if config["model"] == 'GAM':
+                        if config["model"] in ['GAM', 'GAM_semi']:
                             _, do_xhat = model.decode(z)
                         else:
                             do_xhat = model.decoder(torch.cat(z, dim=1)).view(-1, config["image_size"], config["image_size"], 3)
