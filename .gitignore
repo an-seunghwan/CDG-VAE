@@ -8,4 +8,5 @@ artifacts
 tmp_image_*
 etc
 *.sh
-assets/do_intervention
+overleaf.py
+overleaf*
