@@ -397,3 +397,23 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
+model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
+se_list = sorted(os.listdir('./assets/sample_efficiency/'))
+se_list = [x for x in se_list if x != '.DS_Store']
+
+se_result = {}
+for n in model_names:
+    file = [x for x in se_list if n in '_'.join(x.split('_')[:-1])]
+    if n == 'VAE':
+        file = file[1:]
+    for f in file:
+        with open('./assets/sample_efficiency/{}'.format(f)) as txt:
+            se_result['_'.join(f.split('_')[0:-1])] = [x.rstrip('\n') for x in txt.readlines()]
+
+with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
+    f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
+    for key, value in se_result.items():
+        f.write('{}: '.format(key))
+        f.write(', '.join([x.split(': ')[-1] for x in value]))
+        f.write('\n')
+#%%

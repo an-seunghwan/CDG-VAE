@@ -1,0 +1,11 @@
+100 samples accuracy, all samples accuracy, sample efficiency
+VAE_linear: 0.809, 0.883, 0.916
+VAE_nonlinear: 0.800, 0.845, 0.947
+InfoMax_linear: 0.875, 0.954, 0.917
+InfoMax_nonlinear: 0.872, 0.951, 0.917
+CausalVAE: 0.800, 0.800, 1.000
+DEAR_pendulum_linscm: 0.840, 0.945, 0.888
+GAM_linear: 0.832, 0.973, 0.856
+GAM_nonlinear: 0.800, 0.896, 0.892
+GAM_semi_linear: 0.804, 0.888, 0.906
+GAM_semi_nonlinear: 0.800, 0.882, 0.907
