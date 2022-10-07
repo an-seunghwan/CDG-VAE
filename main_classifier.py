@@ -16,12 +16,12 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-from utils.simulation import (
+from modules.simulation import (
     set_random_seed,
     is_dag,
 )
 
-from utils.model_classifier import (
+from modules.model import (
     Classifier,
 )
 #%%
