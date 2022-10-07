@@ -69,7 +69,7 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     parser.add_argument('--model', type=str, default='GAM', 
-                        help='Model options: VAE, InfoMax, GAM, GAM_semi')
+                        help='Model options: VAE, InfoMax, GAM')
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,

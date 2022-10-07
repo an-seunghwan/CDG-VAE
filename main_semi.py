@@ -71,7 +71,7 @@ def get_args(debug):
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     parser.add_argument('--model', type=str, default='GAM_semi', 
-                        help='Model options: VAE, InfoMax, GAM, GAM_semi')
+                        help='Model options: GAM_semi')
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
