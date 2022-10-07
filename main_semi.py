@@ -88,8 +88,6 @@ def get_args(debug):
     # data options
     parser.add_argument('--labeled_ratio', default=0.1, type=float,
                         help='ratio of labeled dataset for semi-supervised learning')
-    parser.add_argument('--DR', default=False, type=bool,
-                        help='If True, use dataset with spurious correlation')
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
