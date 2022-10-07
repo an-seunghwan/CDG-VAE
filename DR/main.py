@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.viz import (
-    viz_graph,
-    viz_heatmap,
-)
-
 from modules.datasets import (
     LabeledDataset, 
     UnLabeledDataset,
@@ -51,7 +46,7 @@ except:
 run = wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    # tags=[""],
+    tags=["DR"],
 )
 #%%
 import argparse
@@ -72,7 +67,7 @@ def get_args(debug):
                         help='Model options: VAE, InfoMax, GAM, GAM_semi')
 
     # causal structure
-    parser.add_argument("--node", default=4, type=int,
+    parser.add_argument("--node", default=5, type=int,
                         help="the number of nodes")
     parser.add_argument("--scm", default='linear', type=str,
                         help="SCM structure options: linear or nonlinear")
@@ -86,8 +81,6 @@ def get_args(debug):
     # data options
     parser.add_argument('--labeled_ratio', default=1, type=float, # fully-supervised
                         help='ratio of labeled dataset for semi-supervised learning')
-    parser.add_argument('--DR', default=False, type=bool,
-                        help='If True, use dataset with spurious correlation')
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
@@ -233,16 +226,15 @@ def main():
         plt.subplot(3, 3, i+1)
         plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
         plt.axis('off')
-    plt.savefig('./assets/recon.png')
     plt.close()
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/{}.pth'.format(config["model"]))
-    artifact = wandb.Artifact('{}'.format(config["model"]), 
+    torch.save(model.state_dict(), './assets/DR_{}.pth'.format(config["model"]))
+    artifact = wandb.Artifact('DR_{}'.format(config["model"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/{}.pth'.format(config["model"]))
+    artifact.add_file('./assets/DR_{}.pth'.format(config["model"]))
     artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
