@@ -32,8 +32,8 @@ from modules.datasets import (
     TestDataset,
 )
 
-from modules.model_downstream import (
-    Classifier
+from modules.model import (
+    DownstreamClassifier
 )
 #%%
 import sys
@@ -223,7 +223,7 @@ def main():
     # for _ in range(10): # repeated experiments
     
     print("Sample Efficiency with 100 labels")
-    downstream_classifier_100 = Classifier(config, device)
+    downstream_classifier_100 = DownstreamClassifier(config, device)
     downstream_classifier_100 = downstream_classifier_100.to(device)
     
     optimizer = torch.optim.Adam(
@@ -304,7 +304,7 @@ def main():
     #%%
     print()
     print("Sample Efficiency with all labels")
-    downstream_classifier = Classifier(config, device)
+    downstream_classifier = DownstreamClassifier(config, device)
     downstream_classifier = downstream_classifier.to(device)
     
     optimizer = torch.optim.Adam(

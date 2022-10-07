@@ -324,7 +324,26 @@ class Classifier(nn.Module):
         out = [C(nn.Flatten()(input * m.to(self.device))) for C, m in zip(self.classify, self.mask)]
         return torch.cat(out, dim=-1)
 #%%
+class DownstreamClassifier(nn.Module):
+    def __init__(self, config, device):
+        super(DownstreamClassifier, self).__init__()
+        
+        self.config = config
+        self.device = device
+        
+        self.classify = nn.Sequential(
+            nn.Linear(config["node"], 2),
+            nn.ELU(),
+            nn.Linear(2, 1),
+            nn.Sigmoid()
+        ).to(device)
+        
+    def forward(self, input):
+        out = self.classify(input)
+        return out
+#%%
 def main():
+    #%%
     config = {
         "image_size": 64,
         "n": 10,
@@ -337,7 +356,7 @@ def main():
     
     B = torch.zeros(config["node"], config["node"])
     B[:2, 2:] = 1
-    
+    #%%
     """CAD-VAE"""
     mask = []
     # light
@@ -389,7 +408,7 @@ def main():
     
     print("CAD-VAE pass test!")
     print()
-    
+    #%%
     """Baseline VAE"""
     model = VAE(B, config, 'cpu')
     discriminator = Discriminator(config, 'cpu')
@@ -431,7 +450,7 @@ def main():
     
     print("Baseline VAE pass test!")
     print()
-    
+    #%%
     """Baseline Classifier"""
     mask = []
     # light
@@ -460,6 +479,19 @@ def main():
     assert pred.shape == (config["n"], config["node"])
     
     print("Baseline Classifier pass test!")
+    print()
+    #%%
+    """Downstream Classifier"""
+    model = DownstreamClassifier(config, 'cpu')
+    for x in model.parameters():
+        print(x.shape)
+    batch = torch.rand(config["n"], config["node"])
+    
+    pred = model(batch)
+    
+    assert pred.shape == (config["n"], 1)
+    
+    print("Downstream Classifier pass test!")
 #%%
 if __name__ == '__main__':
     main()
