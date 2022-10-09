@@ -192,7 +192,7 @@ def main():
     #%%
     accuracy = []
     worst_accuracy = []
-    for repeat_num in range(10): # repeated experiments
+    for repeat_num in range(20): # repeated experiments
     
         downstream_classifier = DownstreamClassifier(config, device)
         downstream_classifier = downstream_classifier.to(device)
@@ -303,8 +303,9 @@ def main():
     #%%
     """log Accuracy"""
     with open('./assets/{}_{}_{}.txt'.format(model_name, config["scm"], config['num']), 'w') as f:
-        f.write('average accuracy: {:.4f}\n'.format(np.array(accuracy).mean()))
-        f.write('worst accuracy: {:.4f}\n'.format(np.array(worst_accuracy).mean()))
+        for avg, worst in zip(accuracy, worst_accuracy):
+            f.write('average accuracy: {:.4f}\n'.format(avg))
+            f.write('worst accuracy: {:.4f}\n'.format(worst))
     #%%
     wandb.run.finish()
 #%%

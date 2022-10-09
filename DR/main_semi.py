@@ -202,11 +202,11 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/{}.pth'.format(config["model"]))
-    artifact = wandb.Artifact('{}'.format(config["model"]), 
+    torch.save(model.state_dict(), './assets/DR_{}.pth'.format(config["model"]))
+    artifact = wandb.Artifact('DR_{}'.format(config["model"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/{}.pth'.format(config["model"]))
+    artifact.add_file('./assets/DR_{}.pth'.format(config["model"]))
     artifact.add_file('./main_semi.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
