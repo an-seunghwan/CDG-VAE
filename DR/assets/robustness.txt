@@ -1,0 +1,8 @@
+model, accuracy, worst accuracy
+VAE(nonlinear) & 96.00% & 60.02% \\
+InfoMax(linear) & 96.13% & 61.44% \\
+InfoMax(nonlinear) & 97.32% & 73.32% \\
+GAM(linear) & 95.09% & 51.04% \\
+GAM(nonlinear) & 95.64% & 57.78% \\
+GAM(semi(linear) & 94.58% & 45.78% \\
+GAM(semi(nonlinear) & 92.40% & 24.04% \\

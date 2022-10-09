@@ -312,25 +312,33 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-# model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
-# se_list = sorted(os.listdir('./assets/sample_efficiency/'))
-# se_list = [x for x in se_list if x != '.DS_Store']
+import os
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+import numpy as np
 
-# se_result = {}
-# for n in model_names:
-#     file = [x for x in se_list if n in '_'.join(x.split('_')[:-1])]
-#     if n == 'VAE':
-#         file = file[1:]
-#     for f in file:
-#         with open('./assets/sample_efficiency/{}'.format(f)) as txt:
-#             se_result['_'.join(f.split('_')[0:-1])] = [x.rstrip('\n') for x in txt.readlines()]
+model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
+dr_list = sorted(os.listdir('./assets/'))
+dr_list = [x for x in dr_list if x != '.DS_Store']
 
-# with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
-#     f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
-#     for key, value in se_result.items():
-#         f.write('{})'.format(key.replace('_', '(')))
-#         for x in [round(float(x.split(': ')[-1]) * 100, 2) for x in value]:
-#             f.write(' & {:.2f}'.format(x))
-#         # f.write(' & '.join([str(round(float(x.split(': ')[-1]) * 100, 2)) for x in value]))
-#         f.write(' \\\\\n')
-# #%%
+dr_result = {}
+worst_dr_result = {}
+for n in model_names:
+    file = [x for x in dr_list if n in '_'.join(x.split('_')[:-1])]
+    if n == 'VAE':
+        file = file[1:]
+    for f in file:
+        with open('./assets/{}'.format(f)) as txt:
+            dr_result['_'.join(f.split('_')[0:-1])] = [float(x.rstrip('\n').split(': ')[1]) for x in txt.readlines() 
+                                                       if x.rstrip('\n').split(': ')[0] == 'average accuracy']
+        with open('./assets/{}'.format(f)) as txt:
+            worst_dr_result['_'.join(f.split('_')[0:-1])] = [float(x.rstrip('\n').split(': ')[1]) for x in txt.readlines() 
+                                                       if x.rstrip('\n').split(': ')[0] == 'worst accuracy']
+#%%
+with open('./assets/robustness.txt', 'w') as f:
+    f.write('model, accuracy, worst accuracy\n')
+    for (key1, value1), (key2, value2) in zip(dr_result.items(), worst_dr_result.items()):
+        f.write('{})'.format(key1.replace('_', '(')))
+        f.write(' & {:.2f}%'.format(np.array(value1).mean() * 100))
+        f.write(' & {:.2f}%'.format(np.array(value2).mean() * 100))
+        f.write(' \\\\\n')
+#%%
