@@ -61,7 +61,7 @@ def arg_as_list(s):
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--seed', type=int, default=1, 
+    parser.add_argument('--seed', type=int, default=2, 
                         help='seed for repeatable results')
     parser.add_argument('--model', type=str, default='GAM', 
                         help='Model options: VAE, InfoMax, GAM')
@@ -90,7 +90,7 @@ def get_args(debug):
                         help='width and heigh of image')
     
     # optimization options
-    parser.add_argument('--epochs', default=100, type=int,
+    parser.add_argument('--epochs', default=200, type=int,
                         help='maximum iteration')
     parser.add_argument('--batch_size', default=128, type=int,
                         help='batch size')
