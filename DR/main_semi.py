@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.viz import (
-    viz_graph,
-    viz_heatmap,
-)
-
 from modules.model import (
     GAM,
 )

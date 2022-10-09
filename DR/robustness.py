@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.viz import (
-    viz_graph,
-    viz_heatmap,
-)
-
 from modules.datasets import (
     LabeledDataset, 
     UnLabeledDataset,
@@ -50,14 +45,14 @@ except:
 wandb.init(
     project="(proposal)CausalVAE", 
     entity="anseunghwan",
-    tags=["SampleEfficiency"],
+    tags=["DistributionalRobustness"],
 )
 #%%
 import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=1, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -69,13 +64,13 @@ def main():
     #%%
     config = vars(get_args(debug=False)) # default configuration
     
-    model_name = 'VAE'
+    # model_name = 'VAE'
     # model_name = 'InfoMax'
-    # model_name = 'GAM'
+    model_name = 'GAM'
     # model_name = 'GAM_semi'
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/DR_{}:v{}'.format(model_name, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
@@ -147,34 +142,11 @@ def main():
     model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"])))
+        model.load_state_dict(torch.load(model_dir + '/DR_{}.pth'.format(config["model"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/DR_{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
     
     model.eval()
-    #%%
-    """with 100 size of training dataset"""
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
-    targets_100 = []
-    representations_100 = []
-    for count, (x_batch, y_batch) in tqdm.tqdm(enumerate(iter(dataloader))):
-        if config["cuda"]:
-            x_batch = x_batch.cuda()
-            y_batch = y_batch.cuda()
-        
-        with torch.no_grad():
-            mean, logvar = model.get_posterior(x_batch)
-        targets_100.append(y_batch)
-        representations_100.append(mean)
-        
-        count += 1
-        if count == 100: break
-    targets_100 = torch.cat(targets_100, dim=0)
-    targets_100 = targets_100[:, [-1]]
-    representations_100 = torch.cat(representations_100, dim=0)
-    
-    downstream_dataset_100 = TensorDataset(representations_100, targets_100)
-    downstream_dataloader_100 = DataLoader(downstream_dataset_100, batch_size=32, shuffle=True)
     #%%
     """with all training dataset"""
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
@@ -191,7 +163,7 @@ def main():
         representations.append(mean)
         
     targets = torch.cat(targets, dim=0)
-    targets = targets[:, [-1]]
+    targets = targets[:, -2:]
     representations = torch.cat(representations, dim=0)
     
     downstream_dataset = TensorDataset(representations, targets)
@@ -212,96 +184,16 @@ def main():
         test_representations.append(mean)
         
     test_targets = torch.cat(test_targets, dim=0)
-    test_targets = test_targets[:, [-1]]
+    test_targets = test_targets[:, -2:]
     test_representations = torch.cat(test_representations, dim=0)
     
     test_downstream_dataset = TensorDataset(test_representations, test_targets)
     test_downstream_dataloader = DataLoader(test_downstream_dataset, batch_size=64, shuffle=True)
     #%%
     accuracy = []
-    accuracy_100 = []
+    worst_accuracy = []
     for repeat_num in range(10): # repeated experiments
     
-        print("Sample Efficiency with 100 labels")
-        downstream_classifier_100 = DownstreamClassifier(config, device)
-        downstream_classifier_100 = downstream_classifier_100.to(device)
-        
-        optimizer = torch.optim.Adam(
-            downstream_classifier_100.parameters(), 
-            lr=0.005
-        )
-        
-        downstream_classifier_100.train()
-        
-        for epoch in range(100):
-            logs = {
-                'loss': [], 
-            }
-            
-            for (x_batch, y_batch) in iter(downstream_dataloader_100):
-                
-                if config["cuda"]:
-                    x_batch = x_batch.cuda()
-                    y_batch = y_batch.cuda()
-                
-                # with torch.autograd.set_detect_anomaly(True):    
-                optimizer.zero_grad()
-                
-                pred = downstream_classifier_100(x_batch)
-                loss = F.binary_cross_entropy(pred, y_batch, reduction='none').mean()
-                
-                loss_ = []
-                loss_.append(('loss', loss))
-                
-                loss.backward()
-                optimizer.step()
-                    
-                """accumulate losses"""
-                for x, y in loss_:
-                    logs[x] = logs.get(x) + [y.item()]
-            
-            # accuracy
-            with torch.no_grad():
-                """train accuracy"""
-                train_correct = 0
-                for (x_batch, y_batch) in iter(downstream_dataloader_100):
-                    
-                    if config["cuda"]:
-                        x_batch = x_batch.cuda()
-                        y_batch = y_batch.cuda()
-                    
-                    pred = downstream_classifier_100(x_batch)
-                    pred = (pred > 0.5).float()
-                    train_correct += (pred == y_batch).float().sum().item()
-                train_correct /= downstream_dataset_100.__len__()
-                
-                """test accuracy"""
-                test_correct = 0
-                for (x_batch, y_batch) in iter(test_downstream_dataloader):
-                    
-                    if config["cuda"]:
-                        x_batch = x_batch.cuda()
-                        y_batch = y_batch.cuda()
-                    
-                    pred = downstream_classifier_100(x_batch)
-                    pred = (pred > 0.5).float()
-                    test_correct += (pred == y_batch).float().sum().item()
-                test_correct /= test_downstream_dataset.__len__()
-            
-            wandb.log({x : np.mean(y) for x, y in logs.items()})
-            wandb.log({'TrainACC(%)_100samples' : train_correct * 100})
-            wandb.log({'TestACC(%)_100samples' : test_correct * 100})
-        
-        print_input = "[Repeat {:02d}]".format(repeat_num + 1)
-        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
-        print_input += ', TrainACC: {:.2f}%'.format(train_correct * 100)
-        print_input += ', TestACC: {:.2f}%'.format(test_correct * 100)
-        print(print_input)
-            
-        # log accuracy
-        accuracy_100.append(test_correct)
-        
-        print("Sample Efficiency with all labels")
         downstream_classifier = DownstreamClassifier(config, device)
         downstream_classifier = downstream_classifier.to(device)
         
@@ -312,7 +204,7 @@ def main():
         
         downstream_classifier.train()
         
-        for epoch in range(100):
+        for epoch in tqdm.tqdm(range(100), 'inner loop...'):
             logs = {
                 'loss': [], 
             }
@@ -327,7 +219,7 @@ def main():
                 optimizer.zero_grad()
                 
                 pred = downstream_classifier(x_batch)
-                loss = F.binary_cross_entropy(pred, y_batch, reduction='none').mean()
+                loss = F.binary_cross_entropy(pred, y_batch[:, [1]], reduction='none').mean()
                 
                 loss_ = []
                 loss_.append(('loss', loss))
@@ -343,76 +235,101 @@ def main():
             with torch.no_grad():
                 """train accuracy"""
                 train_correct = 0
+                worst_train_correct = 0
+                worst_count = 0
                 for (x_batch, y_batch) in iter(downstream_dataloader):
                     
                     if config["cuda"]:
                         x_batch = x_batch.cuda()
                         y_batch = y_batch.cuda()
                     
+                    # average
                     pred = downstream_classifier(x_batch)
                     pred = (pred > 0.5).float()
-                    train_correct += (pred == y_batch).float().sum().item()
+                    train_correct += (pred == y_batch[:, [1]]).float().sum().item()
+                    # worst
+                    idx = y_batch[:, [0]] - y_batch[:, [1]]
+                    idx = torch.where(idx)[0]
+                    if len(idx):
+                        worst_count += len(idx)
+                        pred_ = pred[idx, 0]
+                        worst_train_correct += (pred_ == y_batch[idx, [1]]).float().sum().item()
+                    
                 train_correct /= downstream_dataset.__len__()
+                worst_train_correct /= worst_count
                 
                 """test accuracy"""
                 test_correct = 0
+                worst_test_correct = 0
+                worst_count = 0
                 for (x_batch, y_batch) in iter(test_downstream_dataloader):
                     
                     if config["cuda"]:
                         x_batch = x_batch.cuda()
                         y_batch = y_batch.cuda()
                     
+                    # average
                     pred = downstream_classifier(x_batch)
                     pred = (pred > 0.5).float()
-                    test_correct += (pred == y_batch).float().sum().item()
+                    test_correct += (pred == y_batch[:, [1]]).float().sum().item()
+                    # worst
+                    idx = y_batch[:, [0]] - y_batch[:, [1]]
+                    idx = torch.where(idx)[0]
+                    if len(idx):
+                        worst_count += len(idx)
+                        pred_ = pred[idx, 0]
+                        worst_test_correct += (pred_ == y_batch[idx, [1]]).float().sum().item()
+                    
                 test_correct /= test_downstream_dataset.__len__()
-            
+                worst_test_correct /= worst_count
+                
             wandb.log({x : np.mean(y) for x, y in logs.items()})
-            wandb.log({'TrainACC(%)' : train_correct * 100})
-            wandb.log({'TestACC(%)' : test_correct * 100})
+            wandb.log({'AvgTrainACC(%)' : train_correct * 100})
+            wandb.log({'AvgTestACC(%)' : test_correct * 100})
+            wandb.log({'WorstTrainACC(%)' : worst_train_correct * 100})
+            wandb.log({'WorstTestACC(%)' : worst_test_correct * 100})
         
         print_input = "[Repeat {:02d}]".format(repeat_num + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
-        print_input += ', TrainACC: {:.2f}%'.format(train_correct * 100)
-        print_input += ', TestACC: {:.2f}%'.format(test_correct * 100)
+        print_input += ', AvgTrainACC: {:.2f}%'.format(train_correct * 100)
+        print_input += ', WorstTrainACC: {:.2f}%'.format(worst_train_correct * 100)
+        print_input += ', AvgTestACC: {:.2f}%'.format(test_correct * 100)
+        print_input += ', WorstTestACC: {:.2f}%'.format(worst_test_correct * 100)
         print(print_input)
         
         # log accuracy
         accuracy.append(test_correct)
+        worst_accuracy.append(worst_test_correct)
     #%%
     """log Accuracy"""
-    sample_efficiency = np.array(accuracy_100).mean() / np.array(accuracy).mean()
-    if not os.path.exists('./assets/sample_efficiency/'): 
-        os.makedirs('./assets/sample_efficiency/')
-    with open('./assets/sample_efficiency/{}_{}_{}.txt'.format(model_name, config["scm"], config['num']), 'w') as f:
-        f.write('100 samples accuracy: {:.4f}\n'.format(np.array(accuracy_100).mean()))
-        f.write('all samples accuracy: {:.4f}\n'.format(np.array(accuracy).mean()))
-        f.write('sample efficiency: {:.4f}\n'.format(sample_efficiency))
+    with open('./assets/{}_{}_{}.txt'.format(model_name, config["scm"], config['num']), 'w') as f:
+        f.write('average accuracy: {:.4f}\n'.format(np.array(accuracy).mean()))
+        f.write('worst accuracy: {:.4f}\n'.format(np.array(worst_accuracy).mean()))
     #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
 #%%
-model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
-se_list = sorted(os.listdir('./assets/sample_efficiency/'))
-se_list = [x for x in se_list if x != '.DS_Store']
+# model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
+# se_list = sorted(os.listdir('./assets/sample_efficiency/'))
+# se_list = [x for x in se_list if x != '.DS_Store']
 
-se_result = {}
-for n in model_names:
-    file = [x for x in se_list if n in '_'.join(x.split('_')[:-1])]
-    if n == 'VAE':
-        file = file[1:]
-    for f in file:
-        with open('./assets/sample_efficiency/{}'.format(f)) as txt:
-            se_result['_'.join(f.split('_')[0:-1])] = [x.rstrip('\n') for x in txt.readlines()]
+# se_result = {}
+# for n in model_names:
+#     file = [x for x in se_list if n in '_'.join(x.split('_')[:-1])]
+#     if n == 'VAE':
+#         file = file[1:]
+#     for f in file:
+#         with open('./assets/sample_efficiency/{}'.format(f)) as txt:
+#             se_result['_'.join(f.split('_')[0:-1])] = [x.rstrip('\n') for x in txt.readlines()]
 
-with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
-    f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
-    for key, value in se_result.items():
-        f.write('{})'.format(key.replace('_', '(')))
-        for x in [round(float(x.split(': ')[-1]) * 100, 2) for x in value]:
-            f.write(' & {:.2f}'.format(x))
-        # f.write(' & '.join([str(round(float(x.split(': ')[-1]) * 100, 2)) for x in value]))
-        f.write(' \\\\\n')
-#%%
+# with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
+#     f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
+#     for key, value in se_result.items():
+#         f.write('{})'.format(key.replace('_', '(')))
+#         for x in [round(float(x.split(': ')[-1]) * 100, 2) for x in value]:
+#             f.write(' & {:.2f}'.format(x))
+#         # f.write(' & '.join([str(round(float(x.split(': ')[-1]) * 100, 2)) for x in value]))
+#         f.write(' \\\\\n')
+# #%%
