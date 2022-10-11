@@ -52,8 +52,6 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--dataset', type=str, default='pendulum', 
-                        help='Dataset options: pendulum or celeba')
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")
