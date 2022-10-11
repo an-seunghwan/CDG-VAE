@@ -21,6 +21,10 @@ from modules.simulation import (
     is_dag,
 )
 
+from modules.datasets import (
+    LabeledDataset, 
+)
+
 from modules.model import (
     Classifier,
 )
@@ -37,9 +41,9 @@ except:
     import wandb
 
 run = wandb.init(
-    project="(proposal)CausalVAE", 
+    project="CausalDisentangled", 
     entity="anseunghwan",
-    tags=["classifier"],
+    tags=["CDMClassifier"],
 )
 #%%
 import argparse
@@ -57,6 +61,9 @@ def get_args(debug):
                         help="If True, normalize additional information label data")
     parser.add_argument('--image_size', default=64, type=int,
                         help='width and heigh of image')
+    
+    parser.add_argument('--labeled_ratio', default=1, type=float, # fully-supervised
+                        help='ratio of labeled dataset for semi-supervised learning')
     
     parser.add_argument('--epochs', default=50, type=int,
                         help='maximum iteration')
@@ -90,7 +97,7 @@ def train(dataloader, model, config, optimizer, device):
             
             """Label Prediction"""
             y_hat = torch.sigmoid(pred)
-            loss = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
+            loss = F.binary_cross_entropy(y_hat, y_batch[:, :config["node"]], reduction='none').sum(axis=1).mean()
             loss_.append(('loss', loss))
             
             loss.backward()
@@ -114,58 +121,27 @@ def main():
         torch.cuda.manual_seed(config["seed"])
 
     """dataset"""
-    class CustomDataset(Dataset): 
-        def __init__(self, config):
-            train_imgs = [x for x in os.listdir('./utils/causal_data/pendulum/train') if x.endswith('png')]
-            train_x = []
-            for i in tqdm.tqdm(range(len(train_imgs)), desc="train data loading"):
-                train_x.append(np.array(
-                    Image.open("./utils/causal_data/pendulum/train/{}".format(train_imgs[i])).resize((config["image_size"], config["image_size"]))
-                    )[:, :, :3])
-            self.x_data = (np.array(train_x).astype(float) - 127.5) / 127.5
-            
-            label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-            label = label - label.mean(axis=0)
-            self.std = label.std(axis=0)
-            """bounded label: normalize to (0, 1)"""
-            if config["label_normalization"]: 
-                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0))
-            self.y_data = label
-            self.name = ['light', 'angle', 'length', 'position']
-
-        def __len__(self): 
-            return len(self.x_data)
-
-        def __getitem__(self, idx): 
-            x = torch.FloatTensor(self.x_data[idx])
-            y = torch.FloatTensor(self.y_data[idx])
-            return x, y
-    
-    dataset = CustomDataset(config)
+    dataset = LabeledDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     """masking"""
-    if config["dataset"] == 'pendulum':
-        mask = []
-        # light
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[:20, ...] = 1
-        mask.append(m)
-        # angle
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[20:51, ...] = 1
-        mask.append(m)
-        # shadow
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[51:, ...] = 1
-        mask.append(m)
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[51:, ...] = 1
-        mask.append(m)
+    mask = []
+    # light
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[:20, ...] = 1
+    mask.append(m)
+    # angle
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[20:51, ...] = 1
+    mask.append(m)
+    # shadow
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
+    m = torch.zeros(config["image_size"], config["image_size"], 3)
+    m[51:, ...] = 1
+    mask.append(m)
         
-    elif config["dataset"] == 'celeba':
-        raise NotImplementedError('Not yet for CELEBA dataset!')
-    
     model = Classifier(mask, config, device) 
     model = model.to(device)
     
@@ -174,7 +150,6 @@ def main():
         lr=config["lr"]
     )
     
-    wandb.watch(model, log_freq=100) # tracking gradients
     model.train()
     
     for epoch in range(config["epochs"]):
@@ -188,14 +163,13 @@ def main():
         wandb.log({x : np.mean(y) for x, y in logs.items()})
             
     """model save"""
-    postfix = run.tags[0]
-    torch.save(model.state_dict(), './assets/model_{}.pth'.format(postfix))
-    artifact = wandb.Artifact('model_{}'.format(postfix), 
+    torch.save(model.state_dict(), './assets/CDMClassifier.pth')
+    artifact = wandb.Artifact('CDMClassifier', 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/model_{}.pth'.format(postfix))
-    artifact.add_file('./main_{}.py'.format(postfix))
-    artifact.add_file('./utils/model_{}.py'.format(postfix))
+    artifact.add_file('./assets/CDMClassifier.pth')
+    artifact.add_file('./main_classifier.py')
+    artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
     
     wandb.run.finish()
