@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.viz import (
-    viz_graph,
-    viz_heatmap,
-)
-
 from modules.model import (
     GAM,
 )
@@ -51,9 +46,9 @@ except:
     import wandb
 
 run = wandb.init(
-    project="(proposal)CausalVAE", 
+    project="CausalDisentangled", 
     entity="anseunghwan",
-    # tags=["semi"],
+    tags=["VAEBased"],
 )
 #%%
 import argparse
@@ -70,8 +65,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--model', type=str, default='GAM_semi', 
-                        help='Model options: GAM_semi')
+    parser.add_argument('--model', type=str, default='GAMsemi', 
+                        help='Model options: GAMsemi')
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
@@ -174,14 +169,13 @@ def main():
         lr=config["lr"]
     )
     
-    wandb.watch(model, log_freq=100) # tracking gradients
     model.train()
     
     for epoch in range(config["epochs"]):
         logs, xhat = train_GAM_semi(datasetL, datasetU, model, config, optimizer, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
-        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
+        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
         print(print_input)
         
         """update log"""
@@ -207,12 +201,12 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/{}.pth'.format(config["model"]))
-    artifact = wandb.Artifact('{}'.format(config["model"]), 
+    torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
                               type='model',
                               metadata=config) # description=""
-    artifact.add_file('./assets/{}.pth'.format(config["model"]))
-    artifact.add_file('./main_semi.py')
+    artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
     
