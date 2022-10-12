@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.viz import (
-    viz_graph,
-    viz_heatmap,
-)
-
 from modules.datasets import (
     LabeledDataset, 
     UnLabeledDataset,
@@ -43,16 +38,16 @@ except:
     import wandb
 
 wandb.init(
-    project="(proposal)CausalVAE", 
+    project="CausalDisentangled", 
     entity="anseunghwan",
-    tags=["Inference"],
+    tags=["VAEBased", "Inference"],
 )
 #%%
 import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=1, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -62,18 +57,22 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    # model_name = 'GAM'
-    model_name = 'GAM_semi'
+    model_name = 'GAM'
+    # model_name = 'GAM_semi'
+    
+    scm = 'linear'
+    # scm = 'nonlinear'
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/model_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
+    assert scm == config["scm"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -142,9 +141,10 @@ def main():
     model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"])))
+        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"]), 
+                                         map_location=torch.device('cpu')))
     
     model.eval()
     #%%
@@ -163,10 +163,11 @@ def main():
             x_batch = x_batch.cuda()
             y_batch = y_batch.cuda()
         
-        if config["model"] in ['GAM', 'GAM_semi']:
-            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
-        else:
-            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+        with torch.no_grad():
+            if config["model"] in ['GAM', 'GAM_semi']:
+                mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+            else:
+                mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
         epsilons.append(epsilon.squeeze())
         orig_latents.append(orig_latent.squeeze())
         latents.append(torch.cat(latent, dim=1))
@@ -174,33 +175,33 @@ def main():
         align_latents.append(torch.cat(align_latent, dim=1))
     
     epsilons = torch.cat(epsilons, dim=0)
-    epsilons = epsilons.detach().cpu().numpy()
+    epsilons = epsilons.cpu().numpy()
     orig_latents = torch.cat(orig_latents, dim=0)
-    orig_latents = orig_latents.detach().cpu().numpy()
+    orig_latents = orig_latents.cpu().numpy()
     latents = torch.cat(latents, dim=0)
     
     ### intervention range
     causal_min = np.min(orig_latents, axis=0)
     causal_max = np.max(orig_latents, axis=0)
-    transformed_causal_min = np.min(latents.detach().numpy(), axis=0)
-    transformed_causal_max = np.max(latents.detach().numpy(), axis=0)
+    transformed_causal_min = np.min(latents.cpu().numpy(), axis=0)
+    transformed_causal_max = np.max(latents.cpu().numpy(), axis=0)
     # causal_min = np.quantile(orig_latents, q=0.01, axis=0)
     # causal_max = np.quantile(orig_latents, q=0.99, axis=0)
-    # transformed_causal_min = np.quantile(latents.detach().numpy(), q=0.01, axis=0)
-    # transformed_causal_max = np.quantile(latents.detach().numpy(), q=0.99, axis=0)
+    # transformed_causal_min = np.quantile(latents.cpu().numpy(), q=0.01, axis=0)
+    # transformed_causal_max = np.quantile(latents.cpu().numpy(), q=0.99, axis=0)
     
     fig, ax = plt.subplots(1, 2, figsize=(6, 3))
     diff = np.abs(causal_max - causal_min)
     # diff /= diff.max()
     ax[0].bar(np.arange(config["node"]), diff, width=0.2)
     ax[0].set_xticks(np.arange(config["node"]))
-    ax[0].set_xticklabels(dataset.name)
+    ax[0].set_xticklabels(dataset.name[:config["node"]])
     ax[0].set_ylabel('latent (intervened)', fontsize=12)
     diff = np.abs(transformed_causal_max - transformed_causal_min)
     # diff /= diff.max()
     ax[1].bar(np.arange(config["node"]), diff, width=0.2)
     ax[1].set_xticks(np.arange(config["node"]))
-    ax[1].set_xticklabels(dataset.name)
+    ax[1].set_xticklabels(dataset.name[:config["node"]])
     ax[1].set_ylabel('transformed latent', fontsize=12)
     
     plt.tight_layout()
@@ -213,9 +214,9 @@ def main():
     ### posterior conditional variance
     logvars = torch.cat(logvars, dim=0)
     fig = plt.figure(figsize=(5, 3))
-    plt.bar(np.arange(config["node"]), torch.exp(logvars).mean(axis=0).detach().numpy(),
+    plt.bar(np.arange(config["node"]), torch.exp(logvars).mean(axis=0).cpu().numpy(),
             width=0.2)
-    plt.xticks(np.arange(config["node"]), dataset.name)
+    plt.xticks(np.arange(config["node"]), dataset.name[:config["node"]])
     # plt.xlabel('node', fontsize=12)
     plt.ylabel('posterior variance', fontsize=12)
     plt.ylim(0, 1)
@@ -229,13 +230,13 @@ def main():
     ### cross entropy
     align_latents = torch.cat(align_latents, dim=0)
     y_hat = torch.sigmoid(align_latents)
-    align = F.binary_cross_entropy(y_hat, 
+    align = F.binary_cross_entropy(y_hat.cpu(), 
                                    torch.tensor(dataset.y_data[:, :4], dtype=torch.float32), 
                                    reduction='none').mean(axis=0)
     fig = plt.figure(figsize=(5, 3))
-    plt.bar(np.arange(config["node"]), align.detach().numpy(),
+    plt.bar(np.arange(config["node"]), align.cpu().numpy(),
             width=0.2)
-    plt.xticks(np.arange(config["node"]), dataset.name)
+    plt.xticks(np.arange(config["node"]), dataset.name[:config["node"]])
     # plt.xlabel('node', fontsize=12)
     plt.ylabel('latent', fontsize=12)
     
@@ -256,20 +257,21 @@ def main():
         x_batch = x_batch.cuda()
         y_batch = y_batch.cuda()
     
-    if config["model"] in ['GAM', 'GAM_semi']:
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
-    else:
-        mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
+    with torch.no_grad():
+        if config["model"] in ['GAM', 'GAM_semi']:
+            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
+        else:
+            mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
     
     epsilon = mean # using only mean
     
     fig, ax = plt.subplots(1, 2, figsize=(4, 4))
     
-    ax[0].imshow((x_batch[0].cpu().detach().numpy() + 1) / 2)
+    ax[0].imshow((x_batch[0].cpu().numpy() + 1) / 2)
     ax[0].axis('off')
     ax[0].set_title('original')
     
-    ax[1].imshow((xhat[0].cpu().detach().numpy() + 1) / 2)
+    ax[1].imshow((xhat[0].cpu().numpy() + 1) / 2)
     ax[1].axis('off')
     ax[1].set_title('recon')
     
@@ -284,7 +286,7 @@ def main():
         xhats = [x.view(model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
         fig, ax = plt.subplots(1, 3, figsize=(7, 4))
         for i in range(len(config["factor"])):
-            ax[i].imshow(xhats[i].detach().cpu().numpy())
+            ax[i].imshow(xhats[i].cpu().numpy())
         
         plt.tight_layout()
         plt.savefig('{}/gam.png'.format(model_dir), bbox_inches='tight')
@@ -296,38 +298,39 @@ def main():
     """do-intervention"""
     fig, ax = plt.subplots(config["node"], 9, figsize=(10, 4))
     
-    for do_index, (min, max) in enumerate(zip(transformed_causal_min, transformed_causal_max)):
-        for k, do_value in enumerate(np.linspace(min, max, 9)):
-            do_value = round(do_value, 1)
-            latent_ = [x.clone() for x in latent]
-            latent_[do_index] = torch.tensor([[do_value]], dtype=torch.float32)
-            z = model.inverse(latent_)
-            z = torch.cat(z, dim=1).clone().detach()
-            for j in range(config["node"]):
-                if j == do_index:
-                    continue
+    with torch.no_grad():
+        for do_index, (min, max) in enumerate(zip(transformed_causal_min, transformed_causal_max)):
+            for k, do_value in enumerate(np.linspace(min, max, 9)):
+                do_value = round(do_value, 1)
+                latent_ = [x.clone() for x in latent]
+                latent_[do_index] = torch.tensor([[do_value]], dtype=torch.float32).to(device)
+                z = model.inverse(latent_)
+                z = torch.cat(z, dim=1).clone()
+                for j in range(config["node"]):
+                    if j == do_index:
+                        continue
+                    else:
+                        if j == 0:  # root node
+                            z[:, j] = epsilon[:, j]
+                        z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
+                z = torch.split(z, 1, dim=1)
+                z = list(map(lambda x, layer: layer(x), z, model.flows))
+                z = [z_[0] for z_ in z]
+                
+                if config["model"] in ['GAM', 'GAM_semi']:
+                    _, do_xhat = model.decode(z)
+                    do_xhat = do_xhat[0]
                 else:
-                    if j == 0:  # root node
-                        z[:, j] = epsilon[:, j]
-                    z[:, j] = torch.matmul(z[:, :j], B[:j, j]) + epsilon[:, j]
-            z = torch.split(z, 1, dim=1)
-            z = list(map(lambda x, layer: layer(x), z, model.flows))
-            z = [z_[0] for z_ in z]
-            
-            if config["model"] in ['GAM', 'GAM_semi']:
-                _, do_xhat = model.decode(z)
-                do_xhat = do_xhat[0]
-            else:
-                do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
-            
-            ax[do_index, k].imshow((do_xhat.clone().detach().cpu().numpy() + 1) / 2)
-            ax[do_index, k].axis('off')
+                    do_xhat = model.decoder(torch.cat(z, dim=1)).view(config["image_size"], config["image_size"], 3)
+                
+                ax[do_index, k].imshow((do_xhat.clone().cpu().numpy() + 1) / 2)
+                ax[do_index, k].axis('off')
     
     plt.savefig('{}/do.png'.format(model_dir), bbox_inches='tight')
     # plt.show()
     plt.close()
     
-    wandb.log({'do intervention ({})'.format(', '.join(dataset.name)): wandb.Image(fig)})
+    wandb.log({'do intervention ({})'.format(', '.join(dataset.name[:config["node"]])): wandb.Image(fig)})
     #%%
     wandb.run.finish()
 #%%
