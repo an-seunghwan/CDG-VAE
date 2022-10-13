@@ -61,8 +61,8 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
-    # model_name = 'GAM_semi'
+    # model_name = 'GAM'
+    model_name = 'GAMsemi'
     
     scm = 'linear'
     # scm = 'nonlinear'
@@ -116,7 +116,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] in ['GAM', 'GAM_semi']:
+    elif config["model"] in ['GAM', 'GAMsemi']:
         """Decoder masking"""
         mask = []
         # light
@@ -164,7 +164,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            if config["model"] in ['GAM', 'GAM_semi']:
+            if config["model"] in ['GAM', 'GAMsemi']:
                 mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
             else:
                 mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -258,7 +258,7 @@ def main():
         y_batch = y_batch.cuda()
     
     with torch.no_grad():
-        if config["model"] in ['GAM', 'GAM_semi']:
+        if config["model"] in ['GAM', 'GAMsemi']:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
         else:
             mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(x_batch, deterministic=True)
@@ -282,7 +282,7 @@ def main():
     
     wandb.log({'original and reconstruction': wandb.Image(fig)})
     
-    if config["model"] in ['GAM', 'GAM_semi']:
+    if config["model"] in ['GAM', 'GAMsemi']:
         xhats = [x.view(model.config["image_size"], model.config["image_size"], 3) for x in xhat_separated]
         fig, ax = plt.subplots(1, 3, figsize=(7, 4))
         for i in range(len(config["factor"])):
@@ -317,7 +317,7 @@ def main():
                 z = list(map(lambda x, layer: layer(x), z, model.flows))
                 z = [z_[0] for z_ in z]
                 
-                if config["model"] in ['GAM', 'GAM_semi']:
+                if config["model"] in ['GAM', 'GAMsemi']:
                     _, do_xhat = model.decode(z)
                     do_xhat = do_xhat[0]
                 else:
