@@ -58,13 +58,12 @@ z = np.concatenate([z1, z2], axis=1)
 test_x = np.concatenate([test_x1, test_x2], axis=1)
 test_z = np.concatenate([test_z1, test_z2], axis=1)
 #%%
-"""ground-truth model: disentangled representation"""
+"""Disentangled representation model"""
 gtmodel = sm.Logit(y, z1).fit()
 print(gtmodel.summary())
 
 gtpred = gtmodel.predict(test_z1)
 gtacc = ((gtpred > 0.5).astype(float) == test_y.squeeze()).mean()
-print('ground-truth model test accuracy: {:.2f}%'.format(gtacc * 100))
 #%%
 """ERM"""
 ERMmodel = sm.Logit(y, x).fit()
@@ -72,7 +71,6 @@ print(ERMmodel.summary())
 
 ERMpred = ERMmodel.predict(test_x)
 ERMacc = ((ERMpred > 0.5).astype(float) == test_y.squeeze()).mean()
-print('ERM model test accuracy: {:.2f}%'.format(ERMacc * 100))
 #%%
 x = torch.tensor(x, dtype=torch.float32)
 z = torch.tensor(z, dtype=torch.float32)
@@ -100,7 +98,7 @@ class EntangledModel(nn.Module):
         z = self.fc1(input)
         out = torch.sigmoid(self.fc2(z))
         return z, out
-#%%
+
 torch.manual_seed(1)
 model = EntangledModel()
 optimizer = torch.optim.Adam(
@@ -142,5 +140,8 @@ for epoch in range(20):
     print_input += ', TrainACC: {:.2f}%'.format(train_correct * 100)
     print_input += ', TestACC: {:.2f}%'.format(test_correct * 100)
     print(print_input)
+#%%
+print('Disentangled model test accuracy: {:.2f}%'.format(gtacc * 100))
+print('ERM model test accuracy: {:.2f}%'.format(ERMacc * 100))
 print('Entangled model test accuracy: {:.2f}%'.format(test_correct * 100))
 #%%
