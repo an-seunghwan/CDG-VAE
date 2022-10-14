@@ -13,8 +13,12 @@ from torch.utils.data import Dataset
 #%%
 class LabeledDataset(Dataset): 
     def __init__(self, config, downstream=False):
-        foldername = 'pendulum_real'
-        self.name = ['light', 'angle', 'length', 'position', 'target']
+        if config["DR"]:
+            foldername = 'pendulum_DR'
+            self.name = ['light', 'angle', 'length', 'position', 'background', 'target']
+        else:
+            foldername = 'pendulum_real'
+            self.name = ['light', 'angle', 'length', 'position', 'target']
         train_imgs = [x for x in os.listdir('./modules/causal_data/{}/train'.format(foldername)) if x.endswith('png')]
         
         """labeled ratio: semi-supervised learning"""
@@ -46,7 +50,12 @@ class LabeledDataset(Dataset):
 #%%
 class UnLabeledDataset(Dataset): 
     def __init__(self, config):
-        foldername = 'pendulum_real'
+        if config["DR"]:
+            foldername = 'pendulum_DR'
+            self.name = ['light', 'angle', 'length', 'position', 'background', 'target']
+        else:
+            foldername = 'pendulum_real'
+            self.name = ['light', 'angle', 'length', 'position', 'target']
         train_imgs = [x for x in os.listdir('./modules/causal_data/{}/train'.format(foldername)) if x.endswith('png')]
         
         train_x = []
@@ -65,8 +74,12 @@ class UnLabeledDataset(Dataset):
 #%%
 class TestDataset(Dataset): 
     def __init__(self, config, downstream=False):
-        foldername = 'pendulum_real'
-        self.name = ['light', 'angle', 'length', 'position', 'target']
+        if config["DR"]:
+            foldername = 'pendulum_DR'
+            self.name = ['light', 'angle', 'length', 'position', 'background', 'target']
+        else:
+            foldername = 'pendulum_real'
+            self.name = ['light', 'angle', 'length', 'position', 'target']
         test_imgs = [x for x in os.listdir('./modules/causal_data/{}/test'.format(foldername)) if x.endswith('png')]
         
         test_x = []

@@ -65,6 +65,8 @@ def get_args(debug):
                         help='seed for repeatable results')
     parser.add_argument('--model', type=str, default='GAM', 
                         help='VAE based model options: VAE, InfoMax, GAM')
+    parser.add_argument("--DR", default=False, type=bool,
+                        help="If True, training model with spurious attribute")
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
