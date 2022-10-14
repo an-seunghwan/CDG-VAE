@@ -1,3 +1,3 @@
-100 samples accuracy: 0.8262
-all samples accuracy: 0.9195
-sample efficiency: 0.8985
+100 samples accuracy: 0.8525
+all samples accuracy: 0.9065
+sample efficiency: 0.9404
