@@ -19,9 +19,9 @@ warnings.filterwarnings('ignore')
 #%%
 """
 For main experiments and sample efficiency
-Add followings to ./utils/pendulum.py
+Add followings:
 [1]: measurement error
-[2]: environmental disturbance
+[2]: environmental disturbance (corruption)
 [3]: target label
 """
 #%%
@@ -47,6 +47,7 @@ b = -0.5
 #%%
 count = 0
 scale = 0.1 # measurement error scale
+beta = [1, -1, 0.5, -0.5]
 for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angle_list)):
     objects = []
     
@@ -70,12 +71,14 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     xi_3 += np.random.normal(loc=0, scale=scale)
     xi_4 += np.random.normal(loc=0, scale=scale)
     
-    tau = 0
     """data corruption: 20%"""
     if (count + 1) % 5 == 0:
         xi_3 = np.random.uniform(low=0, high=12)
         xi_3 = np.random.uniform(low=0, high=12)
-        tau = 1
+    
+    """target label"""
+    logit = sum([b*x for b,x in zip(beta, [xi_1, xi_2, xi_3, xi_4])])
+    tau = np.random.binomial(n=1, p=1 / (1 + np.exp(-logit + 2 * np.sin(logit)))) # nonlinear but causal
     
     objects.append(('light', xi_1))
     objects.append(('angle', xi_2))
