@@ -67,7 +67,7 @@ def get_args(debug):
                         help='seed for repeatable results')
     parser.add_argument('--model', type=str, default='GAMsemi', 
                         help='Model options: GAMsemi')
-    parser.add_argument("--DR", default=False, type=bool,
+    parser.add_argument("--DR", default=False, action='store_true',
                         help="If True, training model with spurious attribute")
     
     # causal structure
