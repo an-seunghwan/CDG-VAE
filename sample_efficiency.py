@@ -66,11 +66,11 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    # model_name = 'GAM'
-    model_name = 'GAMsemi'
+    model_name = 'GAM'
+    # model_name = 'GAMsemi'
     
-    # scm = 'linear'
-    scm = 'nonlinear'
+    scm = 'linear'
+    # scm = 'nonlinear'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/model_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')

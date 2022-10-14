@@ -44,16 +44,16 @@ except:
     import wandb
 
 wandb.init(
-    project="(proposal)CausalVAE", 
+    project="CausalDisentangled", 
     entity="anseunghwan",
-    tags=["Metric"],
+    tags=["VAEBased", "Metric"],
 )
 #%%
 import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=1, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -63,18 +63,22 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    # model_name = 'GAM'
-    model_name = 'GAM_semi'
+    model_name = 'GAM'
+    # model_name = 'GAMsemi'
+    
+    scm = 'linear'
+    # scm = 'nonlinear'
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/model_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
+    assert scm == config["scm"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -118,7 +122,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] in ['GAM', 'GAM_semi']:
+    elif config["model"] in ['GAM', 'GAMsemi']:
         """Decoder masking"""
         mask = []
         # light
@@ -143,18 +147,18 @@ def main():
     model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"])))
+        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"]), 
+                                         map_location=torch.device('cpu')))
     
     model.eval()
     #%%
     """import baseline classifier"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/model_classifier:v{}'.format(0), type='model')
+    artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/CDMClassifier:v{}'.format(0), type='model')
     model_dir = artifact.download()
     from modules.model import Classifier
     """masking"""
-    # if config["dataset"] == 'pendulum':
     mask = []
     # light
     m = torch.zeros(config["image_size"], config["image_size"], 3)
@@ -172,14 +176,11 @@ def main():
     m[51:, ...] = 1
     mask.append(m)
         
-    # elif config["dataset"] == 'celeba':
-    #     raise NotImplementedError('Not yet for CELEBA dataset!')
-    
     classifier = Classifier(mask, config, device) 
     if config["cuda"]:
-        classifier.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('classifier')))
+        classifier.load_state_dict(torch.load(model_dir + '/CDMClassifier.pth'))
     else:
-        classifier.load_state_dict(torch.load(model_dir + '/model_{}.pth'.format('classifier'), map_location=torch.device('cpu')))
+        classifier.load_state_dict(torch.load(model_dir + '/CDMClassifier.pth', map_location=torch.device('cpu')))
     #%%
     """latent range"""
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
@@ -190,7 +191,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            if config["model"] in ['GAM', 'GAM_semi']:
+            if config["model"] in ['GAM', 'GAMsemi']:
                 _, _, _, _, latent, _, _, _, _ = model(x_batch, deterministic=True)
             else:
                 _, _, _, _, latent, _, _, _ = model(x_batch, deterministic=True)
@@ -216,7 +217,7 @@ def main():
                     y_batch = y_batch.cuda()
 
                 with torch.no_grad():
-                    if config["model"] in ['GAM', 'GAM_semi']:
+                    if config["model"] in ['GAM', 'GAMsemi']:
                         # mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
                         mean, logvar, epsilon, orig_latent, latent, logdet = model.encode(x_batch, deterministic=True)
                     else:
@@ -246,7 +247,7 @@ def main():
                         z = list(map(lambda x, layer: layer(x), z, model.flows))
                         z = [z_[0] for z_ in z]
                         
-                        if config["model"] in ['GAM', 'GAM_semi']:
+                        if config["model"] in ['GAM', 'GAMsemi']:
                             _, do_xhat = model.decode(z)
                         else:
                             do_xhat = model.decoder(torch.cat(z, dim=1)).view(-1, config["image_size"], config["image_size"], 3)
@@ -278,82 +279,82 @@ def main():
         os.makedirs('./assets/CDM/')
     # save as csv
     df = pd.DataFrame(CDM_mat_lower.round(3), columns=dataset.name[:4], index=dataset.name[:4])
-    df.to_csv('./assets/CDM/lower_{}_{}_{}.csv'.format(model_name, config["scm"], config['num']))
+    df.to_csv('./assets/CDM/lower_{}_{}_{}.csv'.format(config["model"], config["scm"], config['num']))
     df = pd.DataFrame(CDM_mat_upper.round(3), columns=dataset.name[:4], index=dataset.name[:4])
-    df.to_csv('./assets/CDM/upper_{}_{}_{}.csv'.format(model_name, config["scm"], config['num']))
+    df.to_csv('./assets/CDM/upper_{}_{}_{}.csv'.format(config["model"], config["scm"], config['num']))
     #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
 #%%
-model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
-CDM_list = sorted(os.listdir('./assets/CDM/'))
-CDM_lower_list = [x for x in CDM_list if x.startswith('lower')]
-CDM_upper_list = [x for x in CDM_list if x.startswith('upper')]
+# model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAMsemi']
+# CDM_list = sorted(os.listdir('./assets/CDM/'))
+# CDM_lower_list = [x for x in CDM_list if x.startswith('lower')]
+# CDM_upper_list = [x for x in CDM_list if x.startswith('upper')]
 
-lowers = {}
-for n in model_names:
-    file = [x for x in CDM_lower_list if n in '_'.join(x.split('_')[:-1])]
-    if n == 'VAE':
-        file = file[1:]
-    for f in file:
-        lowers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
-uppers = {}
-for n in model_names:
-    file = [x for x in CDM_upper_list if n in '_'.join(x.split('_')[:-1])]
-    if n == 'VAE':
-        file = file[1:]
-    for f in file:
-        uppers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
-#%%
-"""Interventional Robustness"""
-with open('./assets/CDM/IR.txt', 'w') as f:
-    for s in ['length', 'position']:
+# lowers = {}
+# for n in model_names:
+#     file = [x for x in CDM_lower_list if n in '_'.join(x.split('_')[:-1])]
+#     if n == 'VAE':
+#         file = file[1:]
+#     for f in file:
+#         lowers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
+# uppers = {}
+# for n in model_names:
+#     file = [x for x in CDM_upper_list if n in '_'.join(x.split('_')[:-1])]
+#     if n == 'VAE':
+#         file = file[1:]
+#     for f in file:
+#         uppers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
+# #%%
+# """Interventional Robustness"""
+# with open('./assets/CDM/IR.txt', 'w') as f:
+#     for s in ['length', 'position']:
         
-        c = s
-        f.write('CDM({}, {})'.format(c, s) + '\n')
-        for n in uppers.keys():
-            line = ''
-            line += n + ', '
-            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-            f.write(line)
-            f.write('\n')
-        f.write('\n')
+#         c = s
+#         f.write('CDM({}, {})'.format(c, s) + '\n')
+#         for n in uppers.keys():
+#             line = ''
+#             line += n + ', '
+#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#             f.write(line)
+#             f.write('\n')
+#         f.write('\n')
         
-        for c in ['light', 'angle']:
-            f.write('CDM({}, {})'.format(c, s) + '\n')
-            for n in uppers.keys():
-                line = ''
-                line += n + ', '
-                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-                f.write(line)
-                f.write('\n')
-            f.write('\n')
-#%%
-"""Counterfactual Generativeness"""
-with open('./assets/CDM/CG.txt', 'w') as f:
-    for s in ['light', 'angle']:
+#         for c in ['light', 'angle']:
+#             f.write('CDM({}, {})'.format(c, s) + '\n')
+#             for n in uppers.keys():
+#                 line = ''
+#                 line += n + ', '
+#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#                 f.write(line)
+#                 f.write('\n')
+#             f.write('\n')
+# #%%
+# """Counterfactual Generativeness"""
+# with open('./assets/CDM/CG.txt', 'w') as f:
+#     for s in ['light', 'angle']:
         
-        c = s
-        f.write('CDM({}, {})'.format(c, s) + '\n')
-        for n in uppers.keys():
-            line = ''
-            line += n + ', '
-            line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-            f.write(line)
-            f.write('\n')
-        f.write('\n')
+#         c = s
+#         f.write('CDM({}, {})'.format(c, s) + '\n')
+#         for n in uppers.keys():
+#             line = ''
+#             line += n + ', '
+#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#             f.write(line)
+#             f.write('\n')
+#         f.write('\n')
         
-        for c in ['length', 'position']:
-            f.write('CDM({}, {})'.format(c, s) + '\n')
-            for n in uppers.keys():
-                line = ''
-                line += n + ', '
-                line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
-                f.write(line)
-                f.write('\n')
-            f.write('\n')
+#         for c in ['length', 'position']:
+#             f.write('CDM({}, {})'.format(c, s) + '\n')
+#             for n in uppers.keys():
+#                 line = ''
+#                 line += n + ', '
+#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#                 f.write(line)
+#                 f.write('\n')
+#             f.write('\n')
 #%%
 # markers = ['o', 's', '^', 'v', '*']
 # fig, ax = plt.subplots(2, 2, figsize=(8, 8))
