@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.viz import (
-    viz_graph,
-    viz_heatmap,
-)
-
 from modules.datasets import (
     LabeledDataset, 
     UnLabeledDataset,
@@ -48,16 +43,16 @@ except:
     import wandb
 
 wandb.init(
-    project="(proposal)CausalVAE", 
+    project="CausalDisentangled", 
     entity="anseunghwan",
-    tags=["SampleEfficiency"],
+    tags=["VAEBased", "SampleEfficiency"],
 )
 #%%
 import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=1, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -69,16 +64,20 @@ def main():
     #%%
     config = vars(get_args(debug=False)) # default configuration
     
-    model_name = 'VAE'
+    # model_name = 'VAE'
     # model_name = 'InfoMax'
     # model_name = 'GAM'
-    # model_name = 'GAM_semi'
+    model_name = 'GAMsemi'
+    
+    scm = 'linear'
+    # scm = 'nonlinear'
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/(proposal)CausalVAE/{}:v{}'.format(model_name, config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/model_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
+    assert scm == config["scm"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -122,7 +121,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] in ['GAM', 'GAM_semi']:
+    elif config["model"] in ['GAM', 'GAMsemi']:
         """Decoder masking"""
         mask = []
         # light
@@ -147,9 +146,10 @@ def main():
     model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"])))
+        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/{}.pth'.format(config["model"]), map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"]), 
+                                         map_location=torch.device('cpu')))
     
     model.eval()
     #%%
@@ -384,7 +384,7 @@ def main():
     sample_efficiency = np.array(accuracy_100).mean() / np.array(accuracy).mean()
     if not os.path.exists('./assets/sample_efficiency/'): 
         os.makedirs('./assets/sample_efficiency/')
-    with open('./assets/sample_efficiency/{}_{}_{}.txt'.format(model_name, config["scm"], config['num']), 'w') as f:
+    with open('./assets/sample_efficiency/{}_{}_{}.txt'.format(config["model"], config["scm"], config['num']), 'w') as f:
         f.write('100 samples accuracy: {:.4f}\n'.format(np.array(accuracy_100).mean()))
         f.write('all samples accuracy: {:.4f}\n'.format(np.array(accuracy).mean()))
         f.write('sample efficiency: {:.4f}\n'.format(sample_efficiency))
@@ -394,25 +394,25 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAM_semi']
-se_list = sorted(os.listdir('./assets/sample_efficiency/'))
-se_list = [x for x in se_list if x != '.DS_Store']
+# model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAMsemi']
+# se_list = sorted(os.listdir('./assets/sample_efficiency/'))
+# se_list = [x for x in se_list if x != '.DS_Store']
 
-se_result = {}
-for n in model_names:
-    file = [x for x in se_list if n in '_'.join(x.split('_')[:-1])]
-    if n == 'VAE':
-        file = file[1:]
-    for f in file:
-        with open('./assets/sample_efficiency/{}'.format(f)) as txt:
-            se_result['_'.join(f.split('_')[0:-1])] = [x.rstrip('\n') for x in txt.readlines()]
+# se_result = {}
+# for n in model_names:
+#     file = [x for x in se_list if n in '_'.join(x.split('_')[:-1])]
+#     if n == 'VAE':
+#         file = file[1:]
+#     for f in file:
+#         with open('./assets/sample_efficiency/{}'.format(f)) as txt:
+#             se_result['_'.join(f.split('_')[0:-1])] = [x.rstrip('\n') for x in txt.readlines()]
 
-with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
-    f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
-    for key, value in se_result.items():
-        f.write('{})'.format(key.replace('_', '(')))
-        for x in [round(float(x.split(': ')[-1]) * 100, 2) for x in value]:
-            f.write(' & {:.2f}'.format(x))
-        # f.write(' & '.join([str(round(float(x.split(': ')[-1]) * 100, 2)) for x in value]))
-        f.write(' \\\\\n')
+# with open('./assets/sample_efficiency/sample_efficiency.txt', 'w') as f:
+#     f.write('100 samples accuracy, all samples accuracy, sample efficiency\n')
+#     for key, value in se_result.items():
+#         f.write('{})'.format(key.replace('_', '(')))
+#         for x in [round(float(x.split(': ')[-1]) * 100, 2) for x in value]:
+#             f.write(' & {:.2f}'.format(x))
+#         # f.write(' & '.join([str(round(float(x.split(': ')[-1]) * 100, 2)) for x in value]))
+#         f.write(' \\\\\n')
 #%%
