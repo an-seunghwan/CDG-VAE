@@ -52,6 +52,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument("--DR", default=False, type=bool,
+                        help="If True, training model with spurious attribute")
 
     parser.add_argument("--node", default=4, type=int,
                         help="the number of nodes")

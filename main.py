@@ -232,11 +232,18 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
-    artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
-                              type='model',
-                              metadata=config) # description=""
-    artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    if config["DR"]:
+        torch.save(model.state_dict(), './assets/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]))
+        artifact = wandb.Artifact('DRmodel_{}_{}'.format(config["model"], config["scm"]), 
+                                type='model',
+                                metadata=config) # description=""
+        artifact.add_file('./assets/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]))
+    else:
+        torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+        artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
+                                type='model',
+                                metadata=config) # description=""
+        artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
     artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
