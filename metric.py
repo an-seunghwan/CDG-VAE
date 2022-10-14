@@ -199,8 +199,8 @@ def main():
     
     latents = torch.cat(latents, dim=0)
     
-    latent_min = latents.numpy().min(axis=0)
-    latent_max = latents.numpy().max(axis=0)
+    latent_min = latents.cpu().numpy().min(axis=0)
+    latent_max = latents.cpu().numpy().max(axis=0)
     #%%
     """metric"""
     CDM_dict_lower = {x:[] for x in dataset.name}
@@ -231,7 +231,7 @@ def main():
                     score = []
                     for val in [min_, max_]:
                         latent_ = [x.clone() for x in latent]
-                        latent_[do_index] = torch.tensor(val).view(1, 1).repeat(latent[0].size(0), 1)
+                        latent_[do_index] = torch.tensor(val).view(1, 1).repeat(latent[0].size(0), 1).to(device)
                         z = model.inverse(latent_)
                         z = torch.cat(z, dim=1).clone()
                         
