@@ -153,6 +153,8 @@ def main():
     
     model.eval()
     #%%
+    beta = torch.tensor([[1, -1, 0.5, -0.5]]).to(device)
+    
     """with 100 size of training dataset"""
     dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
     targets_100 = []
@@ -170,7 +172,8 @@ def main():
         count += 1
         if count == 100: break
     targets_100 = torch.cat(targets_100, dim=0)
-    targets_100 = targets_100[:, [-1]]
+    logit = torch.matmul(targets_100[:, :-1], beta.t())
+    targets_100 = torch.bernoulli(1 / (1 + torch.exp(-logit -2*torch.sin(logit))))
     representations_100 = torch.cat(representations_100, dim=0)
     
     downstream_dataset_100 = TensorDataset(representations_100, targets_100)
@@ -191,7 +194,8 @@ def main():
         representations.append(mean)
         
     targets = torch.cat(targets, dim=0)
-    targets = targets[:, [-1]]
+    logit = torch.matmul(targets[:, :-1], beta.t())
+    targets = torch.bernoulli(1 / (1 + torch.exp(-logit -2*torch.sin(logit))))
     representations = torch.cat(representations, dim=0)
     
     downstream_dataset = TensorDataset(representations, targets)
@@ -212,7 +216,8 @@ def main():
         test_representations.append(mean)
         
     test_targets = torch.cat(test_targets, dim=0)
-    test_targets = test_targets[:, [-1]]
+    logit = torch.matmul(test_targets[:, :-1], beta.t())
+    test_targets = torch.bernoulli(1 / (1 + torch.exp(-logit -2*torch.sin(logit))))
     test_representations = torch.cat(test_representations, dim=0)
     
     test_downstream_dataset = TensorDataset(test_representations, test_targets)
@@ -307,12 +312,12 @@ def main():
         
         optimizer = torch.optim.Adam(
             downstream_classifier.parameters(), 
-            lr=0.005
+            lr=0.0001
         )
         
         downstream_classifier.train()
         
-        for epoch in range(100):
+        for epoch in range(50):
             logs = {
                 'loss': [], 
             }
