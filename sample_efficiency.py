@@ -312,12 +312,12 @@ def main():
         
         optimizer = torch.optim.Adam(
             downstream_classifier.parameters(), 
-            lr=0.0001
+            lr=0.005
         )
         
         downstream_classifier.train()
         
-        for epoch in range(50):
+        for epoch in range(100):
             logs = {
                 'loss': [], 
             }
