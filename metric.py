@@ -241,7 +241,7 @@ def main():
                             else:
                                 if j == 0:  # root node
                                     z[:, j] = epsilon[:, j]
-                                z[:, j] = torch.matmul(z[:, :j], B[:j, j]) + epsilon[:, j]
+                                z[:, j] = torch.matmul(z[:, :j], model.B[:j, j]) + epsilon[:, j]
                         
                         z = torch.split(z, 1, dim=1)
                         z = list(map(lambda x, layer: layer(x), z, model.flows))
