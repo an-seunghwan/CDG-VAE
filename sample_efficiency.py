@@ -173,7 +173,7 @@ def main():
         if count == 100: break
     targets_100 = torch.cat(targets_100, dim=0)
     logit = torch.matmul(targets_100[:, :-1], beta.t())
-    targets_100 = torch.bernoulli(1 / (1 + torch.exp(-logit -2*torch.sin(logit))))
+    targets_100 = torch.bernoulli(1 / (1 + torch.exp(-logit - 2*torch.sin(logit))))
     representations_100 = torch.cat(representations_100, dim=0)
     
     downstream_dataset_100 = TensorDataset(representations_100, targets_100)
@@ -195,7 +195,7 @@ def main():
         
     targets = torch.cat(targets, dim=0)
     logit = torch.matmul(targets[:, :-1], beta.t())
-    targets = torch.bernoulli(1 / (1 + torch.exp(-logit -2*torch.sin(logit))))
+    targets = torch.bernoulli(1 / (1 + torch.exp(-logit - 2*torch.sin(logit))))
     representations = torch.cat(representations, dim=0)
     
     downstream_dataset = TensorDataset(representations, targets)
@@ -217,7 +217,7 @@ def main():
         
     test_targets = torch.cat(test_targets, dim=0)
     logit = torch.matmul(test_targets[:, :-1], beta.t())
-    test_targets = torch.bernoulli(1 / (1 + torch.exp(-logit -2*torch.sin(logit))))
+    test_targets = torch.bernoulli(1 / (1 + torch.exp(-logit - 2*torch.sin(logit))))
     test_representations = torch.cat(test_representations, dim=0)
     
     test_downstream_dataset = TensorDataset(test_representations, test_targets)
