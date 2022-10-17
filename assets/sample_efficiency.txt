@@ -1,0 +1,10 @@
+100 samples accuracy, all samples accuracy, sample efficiency
+VAE(linear) & 88.41 $\pm$ 2.07 & 90.18 $\pm$ 1.01 & 98.03 $\pm$ 1.67 \\
+VAE(nonlinear) & 87.74 $\pm$ 1.23 & 90.16 $\pm$ 0.60 & 97.32 $\pm$ 1.25 \\
+InfoMax(linear) & 88.69 $\pm$ 1.36 & 90.34 $\pm$ 0.52 & 98.18 $\pm$ 1.45 \\
+InfoMax(nonlinear) & 87.74 $\pm$ 1.05 & 90.15 $\pm$ 0.54 & 97.32 $\pm$ 0.98 \\
+CausalVAE) & 50.39 $\pm$ 2.08 & 86.94 $\pm$ 1.44 & 57.98 $\pm$ 2.74 \\
+GAM(linear) & 89.48 $\pm$ 0.76 & 90.68 $\pm$ 0.24 & 98.67 $\pm$ 0.81 \\
+GAM(nonlinear) & 87.94 $\pm$ 1.29 & 90.19 $\pm$ 0.52 & 97.51 $\pm$ 1.22 \\
+GAMsemi(linear) & 89.33 $\pm$ 0.63 & 90.52 $\pm$ 0.34 & 98.69 $\pm$ 0.48 \\
+GAMsemi(nonlinear) & 88.39 $\pm$ 0.69 & 90.06 $\pm$ 0.47 & 98.14 $\pm$ 0.90 \\

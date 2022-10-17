@@ -288,28 +288,53 @@ def main():
 if __name__ == '__main__':
     main()
 #%%
-# model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAMsemi']
+# import numpy as np
+# import pandas as pd
+
+# # model_names = ['VAE', 'InfoMax', 'CausalVAE', 'DEAR', 'GAM', 'GAMsemi']
+# model_names = ['VAE', 'InfoMax', 'CausalVAE', 'GAM', 'GAMsemi']
 # CDM_list = sorted(os.listdir('./assets/CDM/'))
 # CDM_lower_list = [x for x in CDM_list if x.startswith('lower')]
 # CDM_upper_list = [x for x in CDM_list if x.startswith('upper')]
 
 # lowers = {}
 # for n in model_names:
-#     file = [x for x in CDM_lower_list if n in '_'.join(x.split('_')[:-1])]
-#     if n == 'VAE':
-#         file = file[1:]
-#     for f in file:
-#         lowers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
+#     file = [x for x in CDM_lower_list if x.startswith('lower_' + n)]
+#     cdm = []
+#     if len(file) == 10:
+#         for f in file:
+#             cdm.append(np.array(pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)))
+#     else:
+#         for i in range(2):
+#             tmp_file = file[i*10 : (i+1)*10]
+#             for f in tmp_file:
+#                 cdm.append(np.array(pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)))
+#     mean = np.mean(np.array(cdm), axis=0)
+#     std = np.std(np.array(cdm), axis=0)
+#     mean = pd.DataFrame(mean, columns=['light', 'angle', 'length', 'position'], index=['light', 'angle', 'length', 'position'])
+#     std = pd.DataFrame(std, columns=['light', 'angle', 'length', 'position'], index=['light', 'angle', 'length', 'position'])
+#     lowers['_'.join(f.split('_')[1:-1])] = [mean, std]
+
 # uppers = {}
 # for n in model_names:
-#     file = [x for x in CDM_upper_list if n in '_'.join(x.split('_')[:-1])]
-#     if n == 'VAE':
-#         file = file[1:]
-#     for f in file:
-#         uppers['_'.join(f.split('_')[1:-1])] = pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)
+#     file = [x for x in CDM_lower_list if x.startswith('lower_' + n)]
+#     cdm = []
+#     if len(file) == 10:
+#         for f in file:
+#             cdm.append(np.array(pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)))
+#     else:
+#         for i in range(2):
+#             tmp_file = file[i*10 : (i+1)*10]
+#             for f in tmp_file:
+#                 cdm.append(np.array(pd.read_csv('./assets/CDM/{}'.format(f), index_col=0)))
+#     mean = np.mean(np.array(cdm), axis=0)
+#     std = np.std(np.array(cdm), axis=0)
+#     mean = pd.DataFrame(mean, columns=['light', 'angle', 'length', 'position'], index=['light', 'angle', 'length', 'position'])
+#     std = pd.DataFrame(std, columns=['light', 'angle', 'length', 'position'], index=['light', 'angle', 'length', 'position'])
+#     uppers['_'.join(f.split('_')[1:-1])] = [mean, std]
 # #%%
 # """Interventional Robustness"""
-# with open('./assets/CDM/IR.txt', 'w') as f:
+# with open('./assets/IR.txt', 'w') as f:
 #     for s in ['length', 'position']:
         
 #         c = s
@@ -317,7 +342,8 @@ if __name__ == '__main__':
 #         for n in uppers.keys():
 #             line = ''
 #             line += n + ', '
-#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#             line += '({:.3f}, {:.3f})'.format(lowers[n][0].loc[s].loc[c], uppers[n][0].loc[s].loc[c])
+#             line += ' $\pm$ ({:.3f}, {:.3f})'.format(lowers[n][1].loc[s].loc[c], uppers[n][1].loc[s].loc[c])
 #             f.write(line)
 #             f.write('\n')
 #         f.write('\n')
@@ -327,13 +353,14 @@ if __name__ == '__main__':
 #             for n in uppers.keys():
 #                 line = ''
 #                 line += n + ', '
-#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#                 line += '({:.3f}, {:.3f})'.format(lowers[n][0].loc[s].loc[c], uppers[n][0].loc[s].loc[c])
+#                 line += ' $\pm$ ({:.3f}, {:.3f})'.format(lowers[n][1].loc[s].loc[c], uppers[n][1].loc[s].loc[c])
 #                 f.write(line)
 #                 f.write('\n')
 #             f.write('\n')
 # #%%
 # """Counterfactual Generativeness"""
-# with open('./assets/CDM/CG.txt', 'w') as f:
+# with open('./assets/CG.txt', 'w') as f:
 #     for s in ['light', 'angle']:
         
 #         c = s
@@ -341,7 +368,8 @@ if __name__ == '__main__':
 #         for n in uppers.keys():
 #             line = ''
 #             line += n + ', '
-#             line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#             line += '({:.3f}, {:.3f})'.format(lowers[n][0].loc[s].loc[c], uppers[n][0].loc[s].loc[c])
+#             line += ' $\pm$ ({:.3f}, {:.3f})'.format(lowers[n][1].loc[s].loc[c], uppers[n][1].loc[s].loc[c])
 #             f.write(line)
 #             f.write('\n')
 #         f.write('\n')
@@ -351,7 +379,8 @@ if __name__ == '__main__':
 #             for n in uppers.keys():
 #                 line = ''
 #                 line += n + ', '
-#                 line += '({:.3f}, {:.3f})'.format(lowers[n].loc[s].loc[c], uppers[n].loc[s].loc[c])
+#                 line += '({:.3f}, {:.3f})'.format(lowers[n][0].loc[s].loc[c], uppers[n][0].loc[s].loc[c])
+#                 line += ' $\pm$ ({:.3f}, {:.3f})'.format(lowers[n][1].loc[s].loc[c], uppers[n][1].loc[s].loc[c])
 #                 f.write(line)
 #                 f.write('\n')
 #             f.write('\n')
