@@ -9,6 +9,7 @@ import tqdm
 from PIL import Image
 import matplotlib.pyplot as plt
 # plt.switch_backend('agg')
+from scipy.stats.contingency import crosstab
 
 import torch
 from torch import nn
@@ -73,7 +74,7 @@ def main():
     # scm = 'nonlinear'
     
     """model load"""
-    artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/model_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')
+    artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/DRmodel_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
@@ -146,9 +147,9 @@ def main():
     model = model.to(device)
     
     if config["cuda"]:
-        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"])))
+        model.load_state_dict(torch.load(model_dir + '/DRmodel_{}_{}.pth'.format(config["model"], config["scm"])))
     else:
-        model.load_state_dict(torch.load(model_dir + '/model_{}_{}.pth'.format(config["model"], config["scm"]), 
+        model.load_state_dict(torch.load(model_dir + '/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]), 
                                          map_location=torch.device('cpu')))
     
     model.eval()
@@ -174,6 +175,9 @@ def main():
     
     downstream_dataset = TensorDataset(representations, background, targets)
     downstream_dataloader = DataLoader(downstream_dataset, batch_size=64, shuffle=True)
+    
+    print('Train dataset label crosstab:')
+    print(crosstab(background.cpu().numpy(), targets.cpu().numpy())[1] / len(targets))
     #%%
     """test dataset"""
     test_dataloader = DataLoader(test_dataset, batch_size=64, shuffle=True)
@@ -196,6 +200,9 @@ def main():
     
     test_downstream_dataset = TensorDataset(test_representations, background, test_targets)
     test_downstream_dataloader = DataLoader(test_downstream_dataset, batch_size=64, shuffle=True)
+    
+    print('Test dataset label crosstab:')
+    print(crosstab(background.cpu().numpy(), test_targets.cpu().numpy())[1] / len(test_targets))
     #%%
     accuracy_train = []
     worst_accuracy_train = []
@@ -208,7 +215,7 @@ def main():
         
         optimizer = torch.optim.Adam(
             downstream_classifier.parameters(), 
-            lr=0.005
+            lr=0.001
         )
         
         downstream_classifier.train()
@@ -286,7 +293,7 @@ def main():
                     
                 test_correct /= test_downstream_dataset.__len__()
                 worst_test_correct /= worst_count
-            
+                
             wandb.log({x : np.mean(y) for x, y in logs.items()})
             wandb.log({'AvgTrainACC(%)' : train_correct * 100})
             wandb.log({'AvgTestACC(%)' : test_correct * 100})
@@ -294,7 +301,7 @@ def main():
             wandb.log({'WorstTestACC(%)' : worst_test_correct * 100})
         
         print_input = "[Repeat {:02d}]".format(repeat_num + 1)
-        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y).round(2)) for x, y in logs.items()])
+        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
         print_input += ', AvgTrainACC: {:.2f}%'.format(train_correct * 100)
         print_input += ', AvgTestACC: {:.2f}%'.format(test_correct * 100)
         print_input += ', WorstTrainACC: {:.2f}%'.format(worst_train_correct * 100)
@@ -310,9 +317,11 @@ def main():
     """log Accuracy"""
     if not os.path.exists('./assets/robustness/'): 
         os.makedirs('./assets/robustness/')
-    with open('./assets/robustness/{}_{}_{}.txt'.format(config["model"], config["scm"], config['num']), 'w') as f:
-        f.write('average accuracy: {:.4f}\n'.format(np.array(accuracy_test).mean()))
-        f.write('worst accuracy: {:.4f}\n'.format(np.array(worst_accuracy_test).mean()))
+    with open('./assets/sample_efficiency/{}_{}_{}.txt'.format(config["model"], config["scm"], config['num']), 'w') as f:
+        f.write('train average accuracy: {:.4f}\n'.format(np.array(accuracy_train).mean()))
+        f.write('train worst accuracy: {:.4f}\n'.format(np.array(worst_accuracy_train).mean()))
+        f.write('test average accuracy: {:.4f}\n'.format(np.array(accuracy_test).mean()))
+        f.write('test worst accuracy: {:.4f}\n'.format(np.array(worst_accuracy_test).mean()))
     #%%
     wandb.run.finish()
 #%%
