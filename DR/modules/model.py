@@ -211,7 +211,7 @@ class GAM(nn.Module):
         
         self.config = config
         self.mask = mask
-        assert sum(config["factor"]) == config["node"]
+        # assert sum(config["factor"]) == config["node"]
         assert len(config["factor"]) == len(mask)
         self.device = device
         
@@ -242,7 +242,7 @@ class GAM(nn.Module):
         """decoder"""
         self.decoder = nn.ModuleList(
             [nn.Sequential(
-                nn.Linear(k, 300),
+                nn.Linear(k+1, 300),
                 nn.ELU(),
                 nn.Linear(300, 300),
                 nn.ELU(),
@@ -280,7 +280,12 @@ class GAM(nn.Module):
     
     def decode(self, input):
         latent = torch.cat(input, axis=1)
-        latent = torch.split(latent, self.config["factor"], dim=-1)
+        
+        """DR version"""
+        spurious = latent[:, [-1]]
+        latent = torch.split(latent[:, :-1], self.config["factor"], dim=-1)
+        latent = [torch.cat([z, spurious], dim=1) for z in latent]
+        
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
         xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
         xhat = [x * m.to(self.device) for x, m in zip(xhat, self.mask)] # masking
@@ -302,27 +307,6 @@ class GAM(nn.Module):
                                                   log_determinant=log_determinant)
         
         return mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat
-#%%
-class Classifier(nn.Module):
-    def __init__(self, mask, config, device):
-        super(Classifier, self).__init__()
-        
-        self.mask = mask
-        self.config = config
-        self.device = device
-        
-        self.classify = nn.ModuleList(
-            [nn.Sequential(
-                nn.Linear(3*config["image_size"]*config["image_size"], 300),
-                nn.ELU(),
-                nn.Linear(300, 300),
-                nn.ELU(),
-                nn.Linear(300, 1),
-            ).to(device) for _ in range(config["node"])])
-        
-    def forward(self, input):
-        out = [C(nn.Flatten()(input * m.to(self.device))) for C, m in zip(self.classify, self.mask)]
-        return torch.cat(out, dim=-1)
 #%%
 class DownstreamClassifier(nn.Module):
     def __init__(self, config, device):
@@ -347,7 +331,7 @@ def main():
     config = {
         "image_size": 64,
         "n": 10,
-        "node": 4,
+        "node": 5,
         "flow_num": 4,
         "inverse_loop": 100,
         "scm": 'linear',
@@ -355,7 +339,7 @@ def main():
     }
     
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = 1
+    B[:2, 2:4] = 1
     #%%
     """CAD-VAE"""
     mask = []
@@ -449,36 +433,6 @@ def main():
     assert (torch.cat(out1[6], dim=1) - torch.cat(out2[6], dim=1)).abs().mean() == 0 # align_latent
     
     print("Baseline VAE pass test!")
-    print()
-    #%%
-    """Baseline Classifier"""
-    mask = []
-    # light
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[:20, ...] = 1
-    mask.append(m)
-    # angle
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[20:51, ...] = 1
-    mask.append(m)
-    # shadow
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
-    
-    model = Classifier(mask, config, 'cpu')
-    for x in model.parameters():
-        print(x.shape)
-    batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
-    
-    pred = model(batch)
-    
-    assert pred.shape == (config["n"], config["node"])
-    
-    print("Baseline Classifier pass test!")
     print()
     #%%
     """Downstream Classifier"""
