@@ -29,11 +29,11 @@ class LabeledDataset(Dataset):
         
         label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
         if not downstream:
-            label[:, :-4] = label[:, :-4] - label[:, :-4].mean(axis=0)
+            label[:, :4] = label[:, :4] - label[:, :4].mean(axis=0)
             self.std = label.std(axis=0)
             """bounded label: normalize to (0, 1)"""
             if config["label_normalization"]: 
-                label[:, :-4] = (label[:, :-4] - label[:, :-4].min(axis=0)) / (label[:, :-4].max(axis=0) - label[:, :-4].min(axis=0))
+                label[:, :4] = (label[:, :4] - label[:, :4].min(axis=0)) / (label[:, :4].max(axis=0) - label[:, :4].min(axis=0))
         self.y_data = label
 
     def __len__(self): 
@@ -77,13 +77,13 @@ class TestDataset(Dataset):
                     (config["image_size"], config["image_size"])))[:, :, :3])
         self.x_data = (np.array(test_x).astype(float) - 127.5) / 127.5
         
-        label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+        label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
         if not downstream:
-            label[:, :-4] = label[:, :-4] - label[:, :-4].mean(axis=0)
+            label[:, :4] = label[:, :4] - label[:, :4].mean(axis=0)
             self.std = label.std(axis=0)
             """bounded label: normalize to (0, 1)"""
             if config["label_normalization"]: 
-                label[:, :-4] = (label[:, :-4] - label[:, :-4].min(axis=0)) / (label[:, :-4].max(axis=0) - label[:, :-4].min(axis=0))
+                label[:, :4] = (label[:, :4] - label[:, :-4].min(axis=0)) / (label[:, :4].max(axis=0) - label[:, :4].min(axis=0))
         self.y_data = label
 
     def __len__(self): 
