@@ -76,7 +76,7 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
         xi_3 = np.random.uniform(low=0, high=12)
         xi_3 = np.random.uniform(low=0, high=12)
     
-    """target label"""
+    """target label: *Deprecated*, see sample_efficiency.py""" 
     logit = sum([b*x for b,x in zip(beta, [xi_1, xi_2, xi_3, xi_4])])
     tau = np.random.binomial(n=1, p=1 / (1 + np.exp(-logit + 2 * np.sin(logit)))) # nonlinear but causal
     
