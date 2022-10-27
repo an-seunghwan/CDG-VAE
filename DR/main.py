@@ -46,7 +46,7 @@ except:
 run = wandb.init(
     project="CausalDisentangled", 
     entity="anseunghwan",
-    tags=["VAEBased"],
+    tags=["VAEBased", "DR"],
 )
 #%%
 import argparse
@@ -67,7 +67,7 @@ def get_args(debug):
                         help='VAE based model options: VAE, InfoMax, GAM')
 
     # causal structure
-    parser.add_argument("--node", default=4, type=int,
+    parser.add_argument("--node", default=5, type=int,
                         help="the number of nodes")
     parser.add_argument("--scm", default='linear', type=str,
                         help="SCM structure options: linear or nonlinear")
@@ -113,6 +113,7 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
+    #%%
     config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
@@ -122,7 +123,7 @@ def main():
     torch.manual_seed(config["seed"])
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
-
+    #%%
     """dataset"""
     dataset = LabeledDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
@@ -145,7 +146,7 @@ def main():
         indegree = B.sum(axis=0)
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
-    
+    #%%
     """model"""
     if config["model"] == 'VAE':
         from modules.model import VAE
@@ -192,7 +193,7 @@ def main():
     )
     
     model.train()
-    
+    #%%
     for epoch in range(config["epochs"]):
         if config["model"] == 'VAE':
             logs, xhat = train_VAE(dataloader, model, config, optimizer, device)
@@ -216,29 +217,29 @@ def main():
                 plt.subplot(3, 3, i+1)
                 plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
                 plt.axis('off')
-            plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
+            plt.savefig('./assets/DRtmp_image_{}.png'.format(epoch))
             plt.close()
-    
+    #%%
     """reconstruction result"""
     fig = plt.figure(figsize=(4, 4))
     for i in range(9):
         plt.subplot(3, 3, i+1)
         plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
         plt.axis('off')
-    plt.savefig('./assets/recon.png')
+    plt.savefig('./assets/DRrecon.png')
     plt.close()
-    wandb.log({'reconstruction': wandb.Image(fig)})
-    
+    wandb.log({'DR:reconstruction': wandb.Image(fig)})
+    #%%
     """model save"""
-    torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
-    artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
+    torch.save(model.state_dict(), './assets/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact = wandb.Artifact('DRmodel_{}_{}'.format(config["model"], config["scm"]), 
                             type='model',
                             metadata=config) # description=""
-    artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact.add_file('./assets/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]))
     artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
-    
+    #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
