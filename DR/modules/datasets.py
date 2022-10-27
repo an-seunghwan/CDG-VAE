@@ -83,7 +83,7 @@ class TestDataset(Dataset):
             self.std = label.std(axis=0)
             """bounded label: normalize to (0, 1)"""
             if config["label_normalization"]: 
-                label[:, :4] = (label[:, :4] - label[:, :-4].min(axis=0)) / (label[:, :4].max(axis=0) - label[:, :4].min(axis=0))
+                label[:, :4] = (label[:, :4] - label[:, :4].min(axis=0)) / (label[:, :4].max(axis=0) - label[:, :4].min(axis=0))
         self.y_data = label
 
     def __len__(self): 
