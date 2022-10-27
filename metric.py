@@ -92,7 +92,6 @@ def main():
 
     """dataset"""
     dataset = LabeledDataset(config, downstream=False)
-    test_dataset = TestDataset(config, downstream=False)
 
     """
     Causal Adjacency Matrix
