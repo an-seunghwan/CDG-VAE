@@ -65,8 +65,6 @@ def get_args(debug):
                         help='seed for repeatable results')
     parser.add_argument('--model', type=str, default='GAM', 
                         help='VAE based model options: VAE, InfoMax, GAM')
-    parser.add_argument("--DR", default=False, action='store_true',
-                        help="If True, training model with spurious attribute")
 
     # causal structure
     parser.add_argument("--node", default=4, type=int,
@@ -232,18 +230,11 @@ def main():
     wandb.log({'reconstruction': wandb.Image(fig)})
     
     """model save"""
-    if config["DR"]:
-        torch.save(model.state_dict(), './assets/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]))
-        artifact = wandb.Artifact('DRmodel_{}_{}'.format(config["model"], config["scm"]), 
-                                type='model',
-                                metadata=config) # description=""
-        artifact.add_file('./assets/DRmodel_{}_{}.pth'.format(config["model"], config["scm"]))
-    else:
-        torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
-        artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
-                                type='model',
-                                metadata=config) # description=""
-        artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
+                            type='model',
+                            metadata=config) # description=""
+    artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
     artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
