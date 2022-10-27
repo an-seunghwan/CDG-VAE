@@ -31,8 +31,8 @@ if not os.path.exists('./causal_data/{}/'.format(foldername)):
     os.makedirs('./causal_data/{}/train'.format(foldername))
     os.makedirs('./causal_data/{}/test'.format(foldername))
 #%%
-train = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
-test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
+# train = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
+# test = pd.DataFrame(columns=['light', 'angle', 'length', 'position'])
 #%%
 """Data Generating Process"""
 np.random.seed(1)
@@ -120,8 +120,8 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
         name = '_'.join([str(round(j, 4)) for i,j in objects])
         plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png', 
                     dpi=96, facecolor=ax.get_facecolor())
-        new = pd.DataFrame({i:j for i,j in objects}, index=[1])
-        test = test.append(new, ignore_index=True)
+        # new = pd.DataFrame({i:j for i,j in objects}, index=[1])
+        # test = test.append(new, ignore_index=True)
     
     else: # train, spurious correlation
         if tau == 1:
@@ -139,37 +139,21 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
         name = '_'.join([str(round(j, 4)) for i,j in objects])
         plt.savefig('./causal_data/{}/train/a_'.format(foldername) + name +'.png', 
                     dpi=96, facecolor=ax.get_facecolor())
-        new = pd.DataFrame({i:j for i,j in objects}, index=[1])
-        train = train.append(new, ignore_index=True)
+        # new = pd.DataFrame({i:j for i,j in objects}, index=[1])
+        # train = train.append(new, ignore_index=True)
     # plt.show()
     plt.clf()
     
     count += 1
 #%%
-# train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
-# len(train_imgs)
-# test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
-# len(test_imgs)
-# label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-# label.std(axis=0).round(2)
-# label.mean(axis=0).round(2)
-# #%%
+# foldername = 'pendulum_DR'
 # from scipy.stats.contingency import crosstab
-# crosstab(label[:, -2], label[:, -1])[1] / len(label)
-#%%
-# train_imgs = [x for x in os.listdir('./causal_data/pendulum/train') if x.endswith('.png')]
-# img = np.array(Image.open('./causal_data/pendulum/train/' + train_imgs[0]).resize((64, 64)))[:, :, :3].astype(float)
-# img /= 255
-# # light
-# mask = np.zeros((64, 64, 3))
-# mask[:20, :] = 1
-# plt.imshow(img * mask)
-# # angle
-# mask = np.zeros((64, 64, 3))
-# mask[20:51, :] = 1
-# plt.imshow(img * mask)
-# # shadow
-# mask = np.zeros((64, 64, 3))
-# mask[51:, :] = 1
-# plt.imshow(img * mask)
+
+# train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
+# label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+# print('train:', crosstab(label[:, -2], label[:, -1])[1] / len(label))
+
+# test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
+# label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
+# print('test:', crosstab(label[:, -2], label[:, -1])[1] / len(label))
 #%%
