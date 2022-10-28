@@ -316,7 +316,7 @@ class DownstreamClassifier(nn.Module):
         self.device = device
         
         self.classify = nn.Sequential(
-            nn.Linear(config["node"], 2),
+            nn.Linear(config["node"] - 1, 2),
             nn.ELU(),
             nn.Linear(2, 1),
             nn.Sigmoid()
