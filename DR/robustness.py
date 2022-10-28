@@ -63,7 +63,7 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=False)) # default configuration
+    config = vars(get_args(debug=True)) # default configuration
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
@@ -89,7 +89,7 @@ def main():
     torch.manual_seed(config["seed"])
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
-
+    #%%
     """dataset"""
     dataset = LabeledDataset(config, downstream=True)
     test_dataset = TestDataset(config, downstream=True)
@@ -112,7 +112,7 @@ def main():
         indegree = B.sum(axis=0)
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
-    
+    #%%
     """import model"""
     if config["model"] == 'VAE':
         from modules.model import VAE
@@ -154,7 +154,7 @@ def main():
     
     model.eval()
     #%%
-    """with all training dataset"""
+    """training dataset"""
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
     targets = []
     representations = []
@@ -171,7 +171,7 @@ def main():
     targets = torch.cat(targets, dim=0)
     background = targets[:, [-2]]
     targets = targets[:, [-1]]
-    representations = torch.cat(representations, dim=0)
+    representations = torch.cat(representations, dim=0)[:, :4]
     
     downstream_dataset = TensorDataset(representations, background, targets)
     downstream_dataloader = DataLoader(downstream_dataset, batch_size=64, shuffle=True)
@@ -196,7 +196,7 @@ def main():
     test_targets = torch.cat(test_targets, dim=0)
     background = test_targets[:, [-2]]
     test_targets = test_targets[:, [-1]]
-    test_representations = torch.cat(test_representations, dim=0)
+    test_representations = torch.cat(test_representations, dim=0)[:, :4]
     
     test_downstream_dataset = TensorDataset(test_representations, background, test_targets)
     test_downstream_dataloader = DataLoader(test_downstream_dataset, batch_size=64, shuffle=True)
@@ -300,13 +300,13 @@ def main():
             wandb.log({'WorstTrainACC(%)' : worst_train_correct * 100})
             wandb.log({'WorstTestACC(%)' : worst_test_correct * 100})
         
-        print_input = "[Repeat {:02d}]".format(repeat_num + 1)
-        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
-        print_input += ', AvgTrainACC: {:.2f}%'.format(train_correct * 100)
-        print_input += ', AvgTestACC: {:.2f}%'.format(test_correct * 100)
-        print_input += ', WorstTrainACC: {:.2f}%'.format(worst_train_correct * 100)
-        print_input += ', WorstTestACC: {:.2f}%'.format(worst_test_correct * 100)
-        print(print_input)
+            print_input = "[Repeat {:02d}]".format(repeat_num + 1)
+            print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
+            print_input += ', AvgTrainACC: {:.2f}%'.format(train_correct * 100)
+            print_input += ', AvgTestACC: {:.2f}%'.format(test_correct * 100)
+            print_input += ', WorstTrainACC: {:.2f}%'.format(worst_train_correct * 100)
+            print_input += ', WorstTestACC: {:.2f}%'.format(worst_test_correct * 100)
+            print(print_input)
         
         # log accuracy
         accuracy_train.append(train_correct)
