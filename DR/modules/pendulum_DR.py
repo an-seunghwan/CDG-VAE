@@ -37,8 +37,8 @@ if not os.path.exists('./causal_data/{}/'.format(foldername)):
 """Data Generating Process"""
 np.random.seed(1)
 
-light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 10000)
-pendulum_angle_list = np.random.uniform(0, math.pi/4, 10000)
+light_angle_list= np.random.uniform(math.pi/4, math.pi/2, 100)
+pendulum_angle_list = np.random.uniform(0, math.pi/4, 100)
 # light_angle_list= np.linspace(math.pi/4, math.pi/2, 10)
 # pendulum_angle_list = np.linspace(0, math.pi/4, 10)
 
@@ -48,17 +48,14 @@ b = -0.5
 #%%
 count = 0
 scale = 0.1 # measurement error scale
-beta = [1, -1, 0.5, -0.5]
+
+train = []
+test = []
 for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angle_list)):
     objects = []
     
     xi_1 = light_angle
     xi_2 = pendulum_angle
-    
-    light = center[0] + (10 / math.tan(xi_1))
-    
-    x = 10 + (l - 1.5) * math.sin(xi_2)
-    y = 10 - (l - 1.5) * math.cos(xi_2)
     
     # xi_3 : shadow_length
     # xi_4 : shadow_position
@@ -77,19 +74,80 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
         xi_3 = np.random.uniform(low=0, high=12)
         xi_3 = np.random.uniform(low=0, high=12)
     
-    """target label"""
-    logit = sum([b*x for b,x in zip(beta, [xi_1, xi_2, xi_3, xi_4])])
-    tau = np.random.binomial(n=1, p=1 / (1 + np.exp(-logit + 2 * np.sin(logit)))) # nonlinear but causal
-    
     objects.append(('light', xi_1))
     objects.append(('angle', xi_2))
     objects.append(('length', xi_3))
     objects.append(('position', xi_4))
     
+    if (count + 1) % 4 == 0: # test
+        name = '_'.join([str(round(j, 4)) for i,j in objects])
+        test.append(name)
+
+    else: # train
+        name = '_'.join([str(round(j, 4)) for i,j in objects])
+        train.append(name)
+    
+    count += 1
+#%%
+"""generate target labels"""
+train_labels = []
+for sample in train:
+    train_labels.append([float(x) for x in sample.split('_')])
+test_labels = []
+for sample in test:
+    test_labels.append([float(x) for x in sample.split('_')])
+
+train_labels = np.array(train_labels)
+test_labels = np.array(test_labels)
+mean = train_labels.mean(axis=0)
+train_labels -= mean
+test_labels -= mean
+#%%
+"""generate background with spurious correlation"""
+beta = np.array([1, -1, 0.5, -0.5])
+logit = train_labels @ beta.T
+train_tau = np.random.binomial(n=1, p=1 / (1 + np.exp(-logit + 2 * np.sin(logit)))) # nonlinear but causal
+logit = test_labels @ beta.T
+test_tau = np.random.binomial(n=1, p=1 / (1 + np.exp(-logit + 2 * np.sin(logit)))) # nonlinear but causal
+
+train_background = []
+for tau in train_tau:
+    background = 0
+    if tau == 1:
+        if np.random.uniform() < 0.8:
+            background = 1
+    if tau == 0:
+        if np.random.uniform() < 0.2:
+            background = 1
+    train_background.append(background)
+test_background = []
+for tau in test_tau:
+    background = 0
+    if tau == 1:
+        if np.random.uniform() < 0.5:
+            background = 1
+    if tau == 0:
+        if np.random.uniform() < 0.5:
+            background = 1
+    test_background.append(background)
+
+from scipy.stats.contingency import crosstab
+print('train:', crosstab(train_tau, train_background)[1] / len(train_tau))
+print('test:', crosstab(test_tau, test_background)[1] / len(test_tau))
+#%%
+for name, tau, background in tqdm.tqdm(zip(train, train_tau, train_background)):
+    
+    [xi_1, xi_2, xi_3, xi_4] = [float(x) for x in name.split('_')]
+    
+    light = center[0] + (10 / math.tan(xi_1))
+    
+    x = 10 + (l - 1.5) * math.sin(xi_2)
+    y = 10 - (l - 1.5) * math.cos(xi_2)
+    
     plt.rcParams['figure.figsize'] = (1.0, 1.0)
     
     sun = plt.Circle((light, 20.5), 3, color = 'orange') 
-    gun = plt.Polygon(([10, 10.5], [x,y]), color = 'black', linewidth = 3)
+    gun = plt.Polygon(([10, 10.5], [x, y]), color = 'black', linewidth = 3)
     ball = plt.Circle((x, y), 1.5, color = 'firebrick')
     shadow = plt.Polygon(([xi_4 - xi_3 / 2.0, -0.5], [xi_4 + xi_3 / 2.0, -0.5]), color = 'black', linewidth = 3)
     
@@ -103,57 +161,55 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     ax.set_ylim((-2, 22))
     plt.axis('off')
     
-    background = 0
-    if (count + 1) % 4 == 0: # test
-        if tau == 1:
-            if np.random.uniform() < 0.5:
-                ax.set_facecolor('blue') 
-                background = 1
-        if tau == 0:
-            if np.random.uniform() < 0.5:
-                ax.set_facecolor('blue') 
-                background = 1
-        
-        objects.append(('background', background))
-        objects.append(('target', tau))
-        
-        name = '_'.join([str(round(j, 4)) for i,j in objects])
-        plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png', 
-                    dpi=96, facecolor=ax.get_facecolor())
-        # new = pd.DataFrame({i:j for i,j in objects}, index=[1])
-        # test = test.append(new, ignore_index=True)
+    if background == 1:
+        ax.set_facecolor('blue') 
     
-    else: # train, spurious correlation
-        if tau == 1:
-            if np.random.uniform() < 0.8:
-                ax.set_facecolor('blue') 
-                background = 1
-        if tau == 0:
-            if np.random.uniform() < 0.2:
-                ax.set_facecolor('blue') 
-                background = 1
-        
-        objects.append(('background', background))
-        objects.append(('target', tau))
-        
-        name = '_'.join([str(round(j, 4)) for i,j in objects])
-        plt.savefig('./causal_data/{}/train/a_'.format(foldername) + name +'.png', 
-                    dpi=96, facecolor=ax.get_facecolor())
-        # new = pd.DataFrame({i:j for i,j in objects}, index=[1])
-        # train = train.append(new, ignore_index=True)
-    # plt.show()
-    plt.clf()
+    name = '_'.join([str(round(j, 4)) for j in [xi_1, xi_2, xi_3, xi_4, background, tau]])
+    plt.savefig('./causal_data/{}/train/a_' .format(foldername)+ name +'.png', 
+                dpi=96, facecolor=ax.get_facecolor())
+    plt.close()
+
+for name, tau, background in tqdm.tqdm(zip(test, test_tau, test_background)):
     
-    count += 1
+    [xi_1, xi_2, xi_3, xi_4] = [float(x) for x in name.split('_')]
+    
+    light = center[0] + (10 / math.tan(xi_1))
+    
+    x = 10 + (l - 1.5) * math.sin(xi_2)
+    y = 10 - (l - 1.5) * math.cos(xi_2)
+    
+    plt.rcParams['figure.figsize'] = (1.0, 1.0)
+    
+    sun = plt.Circle((light, 20.5), 3, color = 'orange') 
+    gun = plt.Polygon(([10, 10.5], [x, y]), color = 'black', linewidth = 3)
+    ball = plt.Circle((x, y), 1.5, color = 'firebrick')
+    shadow = plt.Polygon(([xi_4 - xi_3 / 2.0, -0.5], [xi_4 + xi_3 / 2.0, -0.5]), color = 'black', linewidth = 3)
+    
+    ax = plt.gca()
+    ax.add_artist(sun)
+    ax.add_artist(gun)
+    ax.add_artist(ball)
+    ax.add_artist(shadow)
+    
+    ax.set_xlim((0, 20))
+    ax.set_ylim((-2, 22))
+    plt.axis('off')
+    
+    if background == 1:
+        ax.set_facecolor('blue') 
+    
+    name = '_'.join([str(round(j, 4)) for j in [xi_1, xi_2, xi_3, xi_4, background, tau]])
+    plt.savefig('./causal_data/{}/test/a_' .format(foldername)+ name +'.png', 
+                dpi=96, facecolor=ax.get_facecolor())
+    plt.close()
 #%%
-# foldername = 'pendulum_DR'
-# from scipy.stats.contingency import crosstab
+foldername = 'pendulum_DR'
 
-# train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
-# label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
-# print('train:', crosstab(label[:, -2], label[:, -1])[1] / len(label))
+train_imgs = [x for x in os.listdir('./causal_data/{}/train'.format(foldername)) if x.endswith('.png')]
+label = np.array([x[:-4].split('_')[1:] for x in train_imgs]).astype(float)
+print('train:', crosstab(label[:, -2], label[:, -1])[1] / len(label))
 
-# test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
-# label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
-# print('test:', crosstab(label[:, -2], label[:, -1])[1] / len(label))
+test_imgs = [x for x in os.listdir('./causal_data/{}/test'.format(foldername)) if x.endswith('.png')]
+label = np.array([x[:-4].split('_')[1:] for x in test_imgs]).astype(float)
+print('test:', crosstab(label[:, -2], label[:, -1])[1] / len(label))
 #%%
