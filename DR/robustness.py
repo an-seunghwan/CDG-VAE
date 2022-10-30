@@ -63,7 +63,7 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
@@ -215,12 +215,12 @@ def main():
         
         optimizer = torch.optim.Adam(
             downstream_classifier.parameters(), 
-            lr=0.001
+            lr=0.005
         )
         
         downstream_classifier.train()
         
-        for epoch in range(100):
+        for epoch in range(500):
             logs = {
                 'loss': [], 
             }
@@ -300,13 +300,13 @@ def main():
             wandb.log({'WorstTrainACC(%)' : worst_train_correct * 100})
             wandb.log({'WorstTestACC(%)' : worst_test_correct * 100})
         
-            print_input = "[Repeat {:02d}]".format(repeat_num + 1)
-            print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
-            print_input += ', AvgTrainACC: {:.2f}%'.format(train_correct * 100)
-            print_input += ', AvgTestACC: {:.2f}%'.format(test_correct * 100)
-            print_input += ', WorstTrainACC: {:.2f}%'.format(worst_train_correct * 100)
-            print_input += ', WorstTestACC: {:.2f}%'.format(worst_test_correct * 100)
-            print(print_input)
+        print_input = "[Repeat {:02d}]".format(repeat_num + 1)
+        print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
+        print_input += ', AvgTrainACC: {:.2f}%'.format(train_correct * 100)
+        print_input += ', AvgTestACC: {:.2f}%'.format(test_correct * 100)
+        print_input += ', WorstTrainACC: {:.2f}%'.format(worst_train_correct * 100)
+        print_input += ', WorstTestACC: {:.2f}%'.format(worst_test_correct * 100)
+        print(print_input)
         
         # log accuracy
         accuracy_train.append(train_correct)
