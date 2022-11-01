@@ -1,6 +1,0 @@
-project: (proposal)CausalVAE
-program: inference.py
-method: grid
-parameters:
-  num:
-    values: [0, 1, 2, 3, 4, 5]
