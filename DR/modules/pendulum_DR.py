@@ -72,7 +72,7 @@ for light_angle, pendulum_angle in tqdm.tqdm(zip(light_angle_list, pendulum_angl
     """data corruption: 20%"""
     if (count + 1) % 5 == 0:
         xi_3 = np.random.uniform(low=0, high=12)
-        xi_3 = np.random.uniform(low=0, high=12)
+        xi_4 = np.random.uniform(low=0, high=12)
     
     objects.append(('light', xi_1))
     objects.append(('angle', xi_2))
