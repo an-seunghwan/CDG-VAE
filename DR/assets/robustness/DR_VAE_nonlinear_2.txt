@@ -1,0 +1,4 @@
+train average accuracy: 0.6403
+train worst accuracy: 0.5823
+test average accuracy: 0.6064
+test worst accuracy: 0.5610
