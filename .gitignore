@@ -10,3 +10,5 @@ etc
 *.sh
 overleaf.py
 overleaf*
+*.pptx
+*_overleaf.png
