@@ -61,11 +61,11 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
-    # model_name = 'GAMsemi'
+    # model_name = 'GAM'
+    model_name = 'GAMsemi'
     
-    scm = 'linear'
-    # scm = 'nonlinear'
+    # scm = 'linear'
+    scm = 'nonlinear'
     
     """model load"""
     artifact = wandb.use_artifact('anseunghwan/CausalDisentangled/model_{}_{}:v{}'.format(model_name, scm, config["num"]), type='model')
@@ -296,11 +296,11 @@ def main():
         wandb.log({'gam': wandb.Image(fig)})
     #%%
     """do-intervention"""
-    fig, ax = plt.subplots(config["node"], 9, figsize=(10, 4))
+    fig, ax = plt.subplots(config["node"], 7, figsize=(7, 4))
     
     with torch.no_grad():
         for do_index, (min, max) in enumerate(zip(transformed_causal_min, transformed_causal_max)):
-            for k, do_value in enumerate(np.linspace(min, max, 9)):
+            for k, do_value in enumerate(np.linspace(min, max, 7)):
                 do_value = round(do_value, 1)
                 latent_ = [x.clone() for x in latent]
                 latent_[do_index] = torch.tensor([[do_value]], dtype=torch.float32).to(device)
