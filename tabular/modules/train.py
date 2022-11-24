@@ -32,8 +32,7 @@ def train_VAE(dataloader, model, config, optimizer, device):
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
-        # recon = F.mse_loss(xhat, x_batch)
+        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=1).mean() 
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -47,7 +46,7 @@ def train_VAE(dataloader, model, config, optimizer, device):
         
         """Label Alignment : CrossEntropy"""
         y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batch[:, :config["node"]], reduction='none').sum(axis=1).mean()
+        align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
         loss_.append(('alignment', align))
         
         ### posterior variance: for debugging
@@ -99,8 +98,7 @@ def train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
-        # recon = F.mse_loss(xhat, x_batch)
+        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=1).mean() 
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -114,7 +112,7 @@ def train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer
         
         """Label Alignment : CrossEntropy"""
         y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batch[:, :config["node"]], reduction='none').sum(axis=1).mean()
+        align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
         loss_.append(('alignment', align))
         
         """mutual information"""
@@ -167,13 +165,12 @@ def train_GAM(dataloader, model, config, optimizer, device):
         # with torch.autograd.set_detect_anomaly(True):    
         optimizer.zero_grad()
         
-        mean, logvar, _, _, _, _, align_latent, xhat_separated, xhat = model(x_batch)
+        mean, logvar, _, _, _, _, align_latent, _, xhat = model(x_batch)
         
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=[1, 2, 3]).mean() 
-        # recon = F.mse_loss(xhat, x_batch)
+        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=1).mean() 
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -187,80 +184,7 @@ def train_GAM(dataloader, model, config, optimizer, device):
         
         """Label Alignment : CrossEntropy"""
         y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batch[:, :config["node"]], reduction='none').sum(axis=1).mean()
-        loss_.append(('alignment', align))
-        
-        ### posterior variance: for debugging
-        var_ = torch.exp(logvar).mean(axis=0)
-        for i in range(config["node"]):
-            loss_.append(('posterior_variance{}'.format(i+1), var_[i]))
-        
-        loss = recon + config["beta"] * KL 
-        loss += config["lambda"] * align
-        loss_.append(('loss', loss))
-        
-        loss.backward()
-        optimizer.step()
-            
-        """accumulate losses"""
-        for x, y in loss_:
-            logs[x] = logs.get(x) + [y.item()]
-    
-    return logs, xhat
-#%%
-def train_GAM_semi(datasetL, datasetU, model, config, optimizer, device):
-    logs = {
-        'loss': [], 
-        'recon': [],
-        'KL': [],
-        'alignment': [],
-    }
-    # for debugging
-    for i in range(config["node"]):
-        logs['posterior_variance{}'.format(i+1)] = []
-    
-    dataloaderU = DataLoader(datasetU, batch_size=config["batch_size"], shuffle=True)
-    dataloaderL = DataLoader(datasetL, batch_size=config["batch_sizeL"], shuffle=True)
-        
-    for x_batchU in tqdm.tqdm(iter(dataloaderU), desc="inner loop"):
-        try:
-            x_batchL, y_batchL = next(iter_dataloaderL)
-        except:
-            iter_dataloaderL = iter(dataloaderL)
-            x_batchL, y_batchL = next(iter_dataloaderL)
-        
-        if config["cuda"]:
-            x_batchU = x_batchU.cuda()
-            x_batchL = x_batchL.cuda()
-            y_batchL = y_batchL.cuda()
-        
-        # with torch.autograd.set_detect_anomaly(True):    
-        optimizer.zero_grad()
-        
-        # unsupervised
-        mean, logvar, _, _, _, _, align_latent, _, xhat = model(x_batchU)
-        
-        loss_ = []
-        
-        """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batchU, 2).sum(axis=[1, 2, 3]).mean() 
-        # recon = F.mse_loss(xhat, x_batch)
-        loss_.append(('recon', recon))
-        
-        """KL-Divergence"""
-        KL = torch.pow(mean, 2).sum(axis=1)
-        KL -= logvar.sum(axis=1)
-        KL += torch.exp(logvar).sum(axis=1)
-        KL -= config["node"]
-        KL *= 0.5
-        KL = KL.mean()
-        loss_.append(('KL', KL))
-        
-        # supervised
-        """Label Alignment : CrossEntropy"""
-        _, _, _, _, align_latent, _ = model.encode(x_batchL, deterministic=True)
-        y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batchL[:, :config["node"]], reduction='none').sum(axis=1).mean()
+        align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
         loss_.append(('alignment', align))
         
         ### posterior variance: for debugging
