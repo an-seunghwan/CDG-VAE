@@ -43,7 +43,9 @@ def main():
     #%%
     """
     US Census data
-    Reference: https://arxiv.org/pdf/2108.04884v3.pdf
+    Reference:
+    [1] https://arxiv.org/pdf/2108.04884v3.pdf
+    [2] https://github.com/zykls/folktables
     """
     # import folktables
     # from folktables import ACSDataSource, ACSIncome

@@ -108,11 +108,9 @@ class VAE(nn.Module):
         
         """encoder"""
         self.encoder = nn.Sequential(
-            nn.Linear(3*config["image_size"]*config["image_size"], 300),
+            nn.Linear(config["input_dim"], 4),
             nn.ELU(),
-            nn.Linear(300, 300),
-            nn.ELU(),
-            nn.Linear(300, config["node"] * 2),
+            nn.Linear(4, config["node"] * 2),
         ).to(device)
         
         """Causal Adjacency Matrix"""
@@ -132,11 +130,9 @@ class VAE(nn.Module):
         
         """decoder"""
         self.decoder = nn.Sequential(
-            nn.Linear(config["node"], 300),
+            nn.Linear(config["node"], 4),
             nn.ELU(),
-            nn.Linear(300, 300),
-            nn.ELU(),
-            nn.Linear(300, 3*config["image_size"]*config["image_size"]),
+            nn.Linear(4, config["input_dim"]),
             nn.Tanh()
         ).to(device)
         
@@ -153,7 +149,8 @@ class VAE(nn.Module):
         latent = torch.matmul(input, self.I_B_inv) # [batch, node], input = epsilon (exogenous variables)
         orig_latent = latent.clone()
         latent = torch.split(latent, 1, dim=1) # [batch, 1] x node
-        latent = list(map(lambda x, layer: layer(x, log_determinant=log_determinant), latent, self.flows)) # input = (I-B^T)^{-1} * epsilon
+        latent = list(map(lambda x, layer: layer(x, log_determinant=log_determinant), 
+                          latent, self.flows)) # input = (I-B^T)^{-1} * epsilon
         logdet = [x[1] for x in latent]
         latent = [x[0] for x in latent]
         return orig_latent, latent, logdet
@@ -168,7 +165,6 @@ class VAE(nn.Module):
             noise = torch.randn(input.size(0), self.config["node"]).to(self.device) 
             epsilon = mean + torch.exp(logvar / 2) * noise
         orig_latent, latent, logdet = self.transform(epsilon, log_determinant=log_determinant)
-        
         return mean, logvar, epsilon, orig_latent, latent, logdet
     
     def forward(self, input, deterministic=False, log_determinant=False):
@@ -179,7 +175,6 @@ class VAE(nn.Module):
         
         """decoding"""
         xhat = self.decoder(torch.cat(latent, dim=1))
-        xhat = xhat.view(-1, self.config["image_size"], self.config["image_size"], 3)
         
         """Alignment"""
         _, _, _, _, align_latent, _ = self.encode(input, 
@@ -193,15 +188,13 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(3*config["image_size"]*config["image_size"] + config["node"], 300),
+            nn.Linear(config["input_dim"] + config["node"], 4),
             nn.ELU(),
-            nn.Linear(300, 300),
-            nn.ELU(),
-            nn.Linear(300, 1),
+            nn.Linear(4, 1),
         ).to(device)
 
     def forward(self, x, z):
-        x = x.view(-1, 3*self.config["image_size"]*self.config["image_size"])
+        x = x.view(-1, self.config["input_dim"])
         x = torch.cat((x, z), dim=1)
         return self.net(x)
 #%%
@@ -217,11 +210,9 @@ class GAM(nn.Module):
         
         """encoder"""
         self.encoder = nn.Sequential(
-            nn.Linear(3*config["image_size"]*config["image_size"], 300),
+            nn.Linear(config["input_dim"], 4),
             nn.ELU(),
-            nn.Linear(300, 300),
-            nn.ELU(),
-            nn.Linear(300, config["node"] * 2),
+            nn.Linear(4, config["node"] * 2),
         ).to(device)
         
         """Causal Adjacency Matrix"""
@@ -242,12 +233,10 @@ class GAM(nn.Module):
         """decoder"""
         self.decoder = nn.ModuleList(
             [nn.Sequential(
-                nn.Linear(k, 300),
+                nn.Linear(k, 4),
                 nn.ELU(),
-                nn.Linear(300, 300),
-                nn.ELU(),
-                nn.Linear(300, 3*config["image_size"]*config["image_size"]),
-            ).to(device) for k in config["factor"]])
+                nn.Linear(4, m),
+            ).to(device) for k, m in zip(config["factor"], self.mask)])
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
@@ -262,7 +251,8 @@ class GAM(nn.Module):
         latent = torch.matmul(input, self.I_B_inv) # [batch, node], input = epsilon (exogenous variables)
         orig_latent = latent.clone()
         latent = torch.split(latent, 1, dim=1) # [batch, 1] x node
-        latent = list(map(lambda x, layer: layer(x, log_determinant=log_determinant), latent, self.flows)) # input = (I-B^T)^{-1} * epsilon
+        latent = list(map(lambda x, layer: layer(x, log_determinant=log_determinant), 
+                          latent, self.flows)) # input = (I-B^T)^{-1} * epsilon
         logdet = [x[1] for x in latent]
         latent = [x[0] for x in latent]
         return orig_latent, latent, logdet
@@ -282,9 +272,7 @@ class GAM(nn.Module):
         latent = torch.cat(input, axis=1)
         latent = torch.split(latent, self.config["factor"], dim=-1)
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
-        xhat = [x * m.to(self.device) for x, m in zip(xhat, self.mask)] # masking
-        xhat = torch.tanh(sum(xhat)) # generalized addictive model (GAM)
+        xhat = torch.cat(xhat_separated, dim=1)
         return xhat_separated, xhat
     
     def forward(self, input, deterministic=False, log_determinant=False):
@@ -303,79 +291,28 @@ class GAM(nn.Module):
         
         return mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat
 #%%
-class Classifier(nn.Module):
-    def __init__(self, mask, config, device):
-        super(Classifier, self).__init__()
-        
-        self.mask = mask
-        self.config = config
-        self.device = device
-        
-        self.classify = nn.ModuleList(
-            [nn.Sequential(
-                nn.Linear(3*config["image_size"]*config["image_size"], 300),
-                nn.ELU(),
-                nn.Linear(300, 300),
-                nn.ELU(),
-                nn.Linear(300, 1),
-            ).to(device) for _ in range(config["node"])])
-        
-    def forward(self, input):
-        out = [C(nn.Flatten()(input * m.to(self.device))) for C, m in zip(self.classify, self.mask)]
-        return torch.cat(out, dim=-1)
-#%%
-class DownstreamClassifier(nn.Module):
-    def __init__(self, config, device):
-        super(DownstreamClassifier, self).__init__()
-        
-        self.config = config
-        self.device = device
-        
-        self.classify = nn.Sequential(
-            nn.Linear(config["node"], 2),
-            nn.ELU(),
-            nn.Linear(2, 1),
-            nn.Sigmoid()
-        ).to(device)
-        
-    def forward(self, input):
-        out = self.classify(input)
-        return out
-#%%
 def main():
     #%%
     config = {
-        "image_size": 64,
+        "input_dim": 5,
         "n": 10,
         "node": 4,
-        "flow_num": 4,
+        "flow_num": 1,
         "inverse_loop": 100,
-        "scm": 'linear',
-        "factor": [1, 1, 2],
+        "scm": 'nonlinear',
+        "factor": [2, 1, 1],
     }
     
     B = torch.zeros(config["node"], config["node"])
-    B[:2, 2:] = 1
+    B[:3, -1] = 1
     #%%
-    """CAD-VAE"""
-    mask = []
-    # light
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[:20, ...] = 1
-    mask.append(m)
-    # angle
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[20:51, ...] = 1
-    mask.append(m)
-    # shadow
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
+    """CDG-VAE"""
+    mask = [3, 1, 1]
     
     model = GAM(B, mask, config, 'cpu')
     for x in model.parameters():
         print(x.shape)
-    batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
+    batch = torch.rand(config["n"], config["input_dim"])
     
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(batch)
     
@@ -396,7 +333,7 @@ def main():
     assert len(logdet) == config["node"]
     assert align_latent[0].shape == (config["n"], 1)
     assert len(align_latent) == config["node"]
-    assert xhat.shape == (config["n"], config["image_size"], config["image_size"], 3)
+    assert xhat.shape == (config["n"], config["input_dim"])
     
     # deterministic behavior
     out1 = model(batch, deterministic=False)
@@ -406,7 +343,7 @@ def main():
     assert (torch.cat(out1[4], dim=1) - torch.cat(out2[4], dim=1)).abs().mean() != 0 # latent
     assert (torch.cat(out1[6], dim=1) - torch.cat(out2[6], dim=1)).abs().mean() == 0 # align_latent
     
-    print("CAD-VAE pass test!")
+    print("CDG-VAE pass test!")
     print()
     #%%
     """Baseline VAE"""
@@ -416,7 +353,7 @@ def main():
         print(x.shape)
     for x in discriminator.parameters():
         print(x.shape)
-    batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
+    batch = torch.rand(config["n"], config["input_dim"])
     
     mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat = model(batch)
     inverse_diff = torch.abs(sum([x - y for x, y in zip(torch.split(orig_latent, 1, dim=1), 
@@ -438,7 +375,7 @@ def main():
     assert len(logdet) == config["node"]
     assert align_latent[0].shape == (config["n"], 1)
     assert len(align_latent) == config["node"]
-    assert xhat.shape == (config["n"], config["image_size"], config["image_size"], 3)
+    assert xhat.shape == (config["n"], config["input_dim"])
     
     # deterministic behavior
     out1 = model(batch, deterministic=False)
@@ -450,48 +387,6 @@ def main():
     
     print("Baseline VAE pass test!")
     print()
-    #%%
-    """Baseline Classifier"""
-    mask = []
-    # light
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[:20, ...] = 1
-    mask.append(m)
-    # angle
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[20:51, ...] = 1
-    mask.append(m)
-    # shadow
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
-    m = torch.zeros(config["image_size"], config["image_size"], 3)
-    m[51:, ...] = 1
-    mask.append(m)
-    
-    model = Classifier(mask, config, 'cpu')
-    for x in model.parameters():
-        print(x.shape)
-    batch = torch.rand(config["n"], config["image_size"], config["image_size"], 3)
-    
-    pred = model(batch)
-    
-    assert pred.shape == (config["n"], config["node"])
-    
-    print("Baseline Classifier pass test!")
-    print()
-    #%%
-    """Downstream Classifier"""
-    model = DownstreamClassifier(config, 'cpu')
-    for x in model.parameters():
-        print(x.shape)
-    batch = torch.rand(config["n"], config["node"])
-    
-    pred = model(batch)
-    
-    assert pred.shape == (config["n"], 1)
-    
-    print("Downstream Classifier pass test!")
 #%%
 if __name__ == '__main__':
     main()
