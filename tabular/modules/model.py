@@ -213,6 +213,12 @@ class GAM(nn.Module):
             nn.ELU(),
             nn.Linear(4, config["node"] * 2),
         ).to(device)
+        # self.encoder = nn.ModuleList(
+        #     [nn.Sequential(
+        #         nn.Linear(m, 2),
+        #         nn.ELU(),
+        #         nn.Linear(2, k * 2),
+        #     ).to(device) for k, m in zip(config["factor"], self.mask)])
         
         """Causal Adjacency Matrix"""
         self.B = B.to(device) 
@@ -232,9 +238,9 @@ class GAM(nn.Module):
         """decoder"""
         self.decoder = nn.ModuleList(
             [nn.Sequential(
-                nn.Linear(k, 4),
+                nn.Linear(k, 2),
                 nn.ELU(),
-                nn.Linear(4, m),
+                nn.Linear(2, m),
             ).to(device) for k, m in zip(config["factor"], self.mask)])
         
     def inverse(self, input): 
@@ -244,6 +250,10 @@ class GAM(nn.Module):
     def get_posterior(self, input):
         h = self.encoder(nn.Flatten()(input)) # [batch, node * 2]
         mean, logvar = torch.split(h, self.config["node"], dim=1)
+        # input = torch.split(input, self.mask, dim=-1)
+        # h = [torch.split(D(z), k, dim=1) for D, z, k in zip(self.encoder, input, self.config["factor"])]
+        # mean = torch.cat([h_[0] for h_ in h], dim=1)
+        # logvar = torch.cat([h_[1] for h_ in h], dim=1)
         return mean, logvar
     
     def transform(self, input, log_determinant=False):
