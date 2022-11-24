@@ -1,6 +1,6 @@
 #%%
 import os
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
+# os.environ['KMP_DUPLICATE_LIB_OK']='True'
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 #%%
 import numpy as np
@@ -8,7 +8,7 @@ import pandas as pd
 import tqdm
 from PIL import Image
 import matplotlib.pyplot as plt
-plt.switch_backend('agg')
+# plt.switch_backend('agg')
 
 import torch
 from torch import nn
@@ -16,38 +16,38 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-from modules.simulation import (
-    set_random_seed,
-    is_dag,
-)
+# from modules.simulation import (
+#     set_random_seed,
+#     is_dag,
+# )
 
-from modules.datasets import (
-    LabeledDataset, 
-    UnLabeledDataset,
-)
+# from modules.datasets import (
+#     LabeledDataset, 
+#     UnLabeledDataset,
+# )
 
-from modules.train import (
-    train_VAE,
-    train_InfoMax,
-    train_GAM,
-)
+# from modules.train import (
+#     train_VAE,
+#     train_InfoMax,
+#     train_GAM,
+# )
 #%%
-import sys
-import subprocess
-try:
-    import wandb
-except:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "wandb"])
-    with open("./wandb_api.txt", "r") as f:
-        key = f.readlines()
-    subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
-    import wandb
+# import sys
+# import subprocess
+# try:
+#     import wandb
+# except:
+#     subprocess.check_call([sys.executable, "-m", "pip", "install", "wandb"])
+#     with open("./wandb_api.txt", "r") as f:
+#         key = f.readlines()
+#     subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
+#     import wandb
 
-run = wandb.init(
-    project="CausalDisentangled", 
-    entity="anseunghwan",
-    tags=["VAEBased"],
-)
+# run = wandb.init(
+#     project="CausalDisentangled", 
+#     entity="anseunghwan",
+#     tags=["Tabular", "VAEBased"],
+# )
 #%%
 import argparse
 import ast
@@ -79,15 +79,15 @@ def get_args(debug):
                         help="Numbers of latents allocated to each factor in image")
     
     # data options
-    parser.add_argument('--labeled_ratio', default=1, type=float, # fully-supervised
-                        help='ratio of labeled dataset for semi-supervised learning')
+    # parser.add_argument('--labeled_ratio', default=1, type=float, # fully-supervised
+    #                     help='ratio of labeled dataset for semi-supervised learning')
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scaling adjacency matrix with in-degree")
-    parser.add_argument('--image_size', default=64, type=int,
-                        help='width and heigh of image')
+    parser.add_argument('--input_dim', default=5, type=int,
+                        help='input dimension')
     
     # optimization options
     parser.add_argument('--epochs', default=100, type=int,
@@ -113,39 +113,77 @@ def get_args(debug):
         return parser.parse_args()
 #%%
 def main():
-    config = vars(get_args(debug=False)) # default configuration
+    #%%
+    config = vars(get_args(debug=True)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-    wandb.config.update(config)
+    # wandb.config.update(config)
     
-    set_random_seed(config["seed"])
+    # set_random_seed(config["seed"])
     torch.manual_seed(config["seed"])
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
+    #%%
+    class TabularDataset(Dataset): 
+        def __init__(self, config):
+            """
+            load dataset: Personal Loan
+            Reference: https://www.kaggle.com/datasets/teertha/personal-loan-modeling
+            """
+            df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
+            df = df.sample(frac=1, random_state=config["seed"]).reset_index(drop=True)
+            df = df.drop(columns=['ID'])
+             
+            self.continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
+            self.topology = [['CCAvg', 'Mortgage', 'Income'], ['Experience'], ['Age']]
+            df = df[self.continuous]
+            
+            from sklearn.decomposition import PCA
+            pca1 = PCA(n_components=2).fit_transform(df[self.topology[0]])
+            pca2 = PCA(n_components=1).fit_transform(df[self.topology[1]])
+            pca3 = PCA(n_components=1).fit_transform(df[self.topology[2]])
+            label = np.concatenate([pca1, pca2, pca3], axis=1)
+            
+            """bounded label: normalize to (0, 1)"""
+            if config["label_normalization"]: 
+                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0)) # global statistic
+            self.label = label[:4000, :]
+            
+            train = df.iloc[:4000]
+            
+            # continuous
+            mean = train.mean(axis=0)
+            std = train.std(axis=0)
+            train = (train - mean) / std # local statistic
+            
+            self.train = train
+            self.x_data = train.to_numpy()
+            
+        def __len__(self): 
+            return len(self.x_data)
 
-    """dataset"""
-    dataset = LabeledDataset(config)
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+        def __getitem__(self, idx): 
+            x = torch.FloatTensor(self.x_data[idx])
+            y = torch.FloatTensor(self.label[idx])
+            return x, y
     
+    dataset = TabularDataset(config)
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    #%%
     """
     Causal Adjacency Matrix
-    light -> length
-    light -> position
-    angle -> length
-    angle -> position
+    [CCAvg, Mortgage, Income] -> Age
+    Experience -> Age
     """
     B = torch.zeros(config["node"], config["node"])
-    B[dataset.name.index('light'), dataset.name.index('length')] = 1
-    B[dataset.name.index('light'), dataset.name.index('position')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('length')] = 1
-    B[dataset.name.index('angle'), dataset.name.index('position')] = 1
+    B[:3, -1] = 1
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
         indegree = B.sum(axis=0)
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
-    
+    #%%
     """model"""
     if config["model"] == 'VAE':
         from modules.model import VAE
