@@ -78,8 +78,8 @@ def get_args(debug):
     parser.add_argument("--factor", default=[1, 1, 1], type=arg_as_list, 
                         help="Numbers of latents allocated to each factor in image")
     
-    parser.add_argument("--label_normalization", default=False, type=bool,
-                        help="If True, normalize additional information label data")
+    # parser.add_argument("--label_normalization", default=False, type=bool,
+    #                     help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scaling adjacency matrix with in-degree")
     parser.add_argument('--input_dim', default=5, type=int,
@@ -96,9 +96,9 @@ def get_args(debug):
                         help='learning rate for discriminator in InfoMax')
     
     # loss coefficients
-    parser.add_argument('--beta', default=0.1, type=float,
+    parser.add_argument('--beta', default=0.01, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=0, type=float,
+    parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
     parser.add_argument('--gamma', default=1, type=float, # InfoMax
                         help='weight of f-divergence (lower bound of information)')
@@ -127,8 +127,8 @@ def main():
     from causallearn.utils.GraphUtils import GraphUtils
     
     cg = pc(data=dataset.train.to_numpy(), 
-            alpha=0.1, 
-            indep_test='fisherz') 
+            alpha=0.05, 
+            indep_test='chisq') 
     print(cg.G)
     
     # visualization
@@ -213,7 +213,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            out = model(x_batch, deterministic=False)
+            out = model(x_batch, deterministic=True)
         train_recon.append(out[-1])
     train_recon = torch.cat(train_recon, dim=0)
     #%%
@@ -224,7 +224,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            out = model(x_batch, deterministic=False)
+            out = model(x_batch, deterministic=True)
         test_recon.append(out[-1])
     test_recon = torch.cat(test_recon, dim=0)
     #%%
@@ -238,28 +238,28 @@ def main():
             sample_recon = model.decoder(torch.cat(latent, dim=1))
     #%%
     """PC algorithm : CPDAG"""
-    cols = [item for sublist in dataset.topology for item in sublist]
-    train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
-    train_df = train_df[dataset.continuous]
+    # cols = [item for sublist in dataset.topology for item in sublist]
+    # train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
+    # train_df = train_df[dataset.continuous]
     
-    cg = pc(data=train_df.to_numpy(), 
-            alpha=0.1, 
-            indep_test='fisherz') 
-    print(cg.G)
+    # cg = pc(data=train_df.to_numpy(), 
+    #         alpha=0.05, 
+    #         indep_test='chisq') 
+    # print(cg.G)
     
-    # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
-    pdy.write_png('./assets/dag_recon_train_loan.png')
-    fig = Image.open('./assets/dag_recon_train_loan.png')
-    wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
+    # # visualization
+    # pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
+    # pdy.write_png('./assets/dag_recon_train_loan.png')
+    # fig = Image.open('./assets/dag_recon_train_loan.png')
+    # wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
     #%%
     cols = [item for sublist in dataset.topology for item in sublist]
     test_df = pd.DataFrame(test_recon.numpy(), columns=cols)
     test_df = test_df[dataset.continuous]
     
     cg = pc(data=test_df.to_numpy(), 
-            alpha=0.1, 
-            indep_test='fisherz') 
+            alpha=0.05, 
+            indep_test='chisq') 
     print(cg.G)
     
     # visualization
@@ -273,8 +273,8 @@ def main():
     sample_df = sample_df[dataset.continuous]
     
     cg = pc(data=sample_df.to_numpy(), 
-            alpha=0.1, 
-            indep_test='fisherz') 
+            alpha=0.05, 
+            indep_test='chisq') 
     print(cg.G)
     
     # visualization
@@ -282,17 +282,6 @@ def main():
     pdy.write_png('./assets/dag_recon_sample_loan.png')
     fig = Image.open('./assets/dag_recon_sample_loan.png')
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
-    #%%
-    cg = pc(data=dataset.label, 
-            alpha=0.1, 
-            indep_test='fisherz') 
-    print(cg.G)
-    
-    # visualization
-    pdy = GraphUtils.to_pydot(cg.G)
-    pdy.write_png('./assets/dag_label_loan.png')
-    fig = Image.open('./assets/dag_label_loan.png')
-    wandb.log({'Label DAG': wandb.Image(fig)})
     #%%
     # """model save"""
     # torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
