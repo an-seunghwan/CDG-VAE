@@ -16,21 +16,21 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 
-# from modules.simulation import (
-#     set_random_seed,
-#     is_dag,
-# )
+from modules.simulation import (
+    set_random_seed,
+    is_dag,
+)
 
 # from modules.datasets import (
 #     LabeledDataset, 
 #     UnLabeledDataset,
 # )
 
-# from modules.train import (
-#     train_VAE,
-#     train_InfoMax,
-#     train_GAM,
-# )
+from modules.train import (
+    train_VAE,
+    train_InfoMax,
+    train_GAM,
+)
 #%%
 # import sys
 # import subprocess
@@ -75,12 +75,8 @@ def get_args(debug):
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
-    parser.add_argument("--factor", default=[1, 1, 2], type=arg_as_list, 
+    parser.add_argument("--factor", default=[2, 1, 1], type=arg_as_list, 
                         help="Numbers of latents allocated to each factor in image")
-    
-    # data options
-    # parser.add_argument('--labeled_ratio', default=1, type=float, # fully-supervised
-    #                     help='ratio of labeled dataset for semi-supervised learning')
     
     parser.add_argument("--label_normalization", default=True, type=bool,
                         help="If True, normalize additional information label data")
@@ -92,17 +88,17 @@ def get_args(debug):
     # optimization options
     parser.add_argument('--epochs', default=100, type=int,
                         help='maximum iteration')
-    parser.add_argument('--batch_size', default=128, type=int,
+    parser.add_argument('--batch_size', default=256, type=int,
                         help='batch size')
-    parser.add_argument('--lr', default=0.001, type=float,
+    parser.add_argument('--lr', default=0.01, type=float,
                         help='learning rate')
-    parser.add_argument('--lr_D', default=0.0001, type=float, # InfoMax
+    parser.add_argument('--lr_D', default=0.001, type=float, # InfoMax
                         help='learning rate for discriminator in InfoMax')
     
     # loss coefficients
-    parser.add_argument('--beta', default=0.1, type=float,
+    parser.add_argument('--beta', default=0.05, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=1, type=float,
                         help='weight of label alignment loss')
     parser.add_argument('--gamma', default=1, type=float, # InfoMax
                         help='weight of f-divergence (lower bound of information)')
@@ -202,20 +198,7 @@ def main():
         
     elif config["model"] == 'GAM':
         """Decoder masking"""
-        mask = []
-        # light
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[:20, ...] = 1
-        mask.append(m)
-        # angle
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[20:51, ...] = 1
-        mask.append(m)
-        # shadow
-        m = torch.zeros(config["image_size"], config["image_size"], 3)
-        m[51:, ...] = 1
-        mask.append(m)
-        
+        mask = [3, 1, 1]
         from modules.model import GAM
         model = GAM(B, mask, config, device) 
     
@@ -228,7 +211,7 @@ def main():
         model.parameters(), 
         lr=config["lr"]
     )
-    
+    #%%
     model.train()
     
     for epoch in range(config["epochs"]):
@@ -245,39 +228,99 @@ def main():
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
         print(print_input)
         
-        """update log"""
-        wandb.log({x : np.mean(y) for x, y in logs.items()})
+        # """update log"""
+        # wandb.log({x : np.mean(y) for x, y in logs.items()})
+    #%%
+    class TestTabularDataset(Dataset): 
+        def __init__(self, config):
+            """
+            load dataset: Personal Loan
+            Reference: https://www.kaggle.com/datasets/teertha/personal-loan-modeling
+            """
+            df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
+            df = df.sample(frac=1, random_state=config["seed"]).reset_index(drop=True)
+            df = df.drop(columns=['ID'])
+             
+            self.continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
+            self.topology = [['CCAvg', 'Mortgage', 'Income'], ['Experience'], ['Age']]
+            df = df[self.continuous]
             
-        if epoch % 10 == 0:
-            plt.figure(figsize=(4, 4))
-            for i in range(9):
-                plt.subplot(3, 3, i+1)
-                plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
-                plt.axis('off')
-            plt.savefig('./assets/tmp_image_{}.png'.format(epoch))
-            plt.close()
+            from sklearn.decomposition import PCA
+            pca1 = PCA(n_components=2).fit_transform(df[self.topology[0]])
+            pca2 = PCA(n_components=1).fit_transform(df[self.topology[1]])
+            pca3 = PCA(n_components=1).fit_transform(df[self.topology[2]])
+            label = np.concatenate([pca1, pca2, pca3], axis=1)
+            
+            """bounded label: normalize to (0, 1)"""
+            if config["label_normalization"]: 
+                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0)) # global statistic
+            self.label = label[4000:, :]
+            
+            train = df.iloc[:4000]
+            test = df.iloc[4000:]
+            
+            # continuous
+            mean = train.mean(axis=0)
+            std = train.std(axis=0)
+            test = (test - mean) / std # local statistic
+            
+            self.test = test
+            self.x_data = test.to_numpy()
+            
+        def __len__(self): 
+            return len(self.x_data)
+
+        def __getitem__(self, idx): 
+            x = torch.FloatTensor(self.x_data[idx])
+            y = torch.FloatTensor(self.label[idx])
+            return x, y
     
-    """reconstruction result"""
-    fig = plt.figure(figsize=(4, 4))
-    for i in range(9):
-        plt.subplot(3, 3, i+1)
-        plt.imshow((xhat[i].cpu().detach().numpy() + 1) / 2)
-        plt.axis('off')
-    plt.savefig('./assets/recon.png')
-    plt.close()
-    wandb.log({'reconstruction': wandb.Image(fig)})
+    testdataset = TestTabularDataset(config)
+    testdataloader = DataLoader(testdataset, batch_size=config["batch_size"], shuffle=True)
+    #%%
+    test_recon = []
+    for (x_batch, y_batch) in tqdm.tqdm(iter(testdataloader), desc="inner loop"):
+        if config["cuda"]:
+            x_batch = x_batch.cuda()
+            y_batch = y_batch.cuda()
+        
+        with torch.no_grad():
+            out = model(x_batch, deterministic=True)
+        test_recon.append(out[-1])
+    test_recon = torch.cat(test_recon, dim=0)
+    #%%
+    randn = torch.randn(1000, config["node"])
+    with torch.no_grad():
+        _, latent, _ = model.transform(randn, log_determinant=False)
+        sample_recon = model.decode(latent)[1]
+    #%%
+    """PC algorithm : CPDAG"""
+    from causallearn.search.ConstraintBased.PC import pc
+    from causallearn.utils.GraphUtils import GraphUtils
     
-    """model save"""
-    torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
-    artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
-                            type='model',
-                            metadata=config) # description=""
-    artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
-    artifact.add_file('./main.py')
-    artifact.add_file('./modules/model.py')
-    wandb.log_artifact(artifact)
+    # cg = pc(data=test_recon.numpy(), 
+    cg = pc(data=sample_recon.numpy(), 
+            alpha=0.1, 
+            indep_test='fisherz') 
+    print(cg.G)
     
-    wandb.run.finish()
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=testdataset.continuous)
+    pdy.write_png('./assets/dag_recon_loan.png')
+    fig = Image.open('./assets/dag_recon_loan.png')
+    fig.show()
+    #%%
+    # """model save"""
+    # torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    # artifact = wandb.Artifact('model_{}_{}'.format(config["model"], config["scm"]), 
+    #                         type='model',
+    #                         metadata=config) # description=""
+    # artifact.add_file('./assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
+    # artifact.add_file('./main.py')
+    # artifact.add_file('./modules/model.py')
+    # wandb.log_artifact(artifact)
+    #%%
+    # wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
