@@ -133,7 +133,6 @@ class VAE(nn.Module):
             nn.Linear(config["node"], 4),
             nn.ELU(),
             nn.Linear(4, config["input_dim"]),
-            nn.Tanh()
         ).to(device)
         
     def inverse(self, input): 
