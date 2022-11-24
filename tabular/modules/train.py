@@ -182,9 +182,10 @@ def train_GAM(dataloader, model, config, optimizer, device):
         KL = KL.mean()
         loss_.append(('KL', KL))
         
-        """Label Alignment : CrossEntropy"""
-        y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
-        align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
+        """Label Alignment"""
+        # y_hat = torch.sigmoid(torch.cat(align_latent, dim=1))
+        # align = F.binary_cross_entropy(y_hat, y_batch, reduction='none').sum(axis=1).mean()
+        align = torch.pow(torch.cat(align_latent, dim=1) - y_batch, 2).sum(axis=1).mean()
         loss_.append(('alignment', align))
         
         ### posterior variance: for debugging
