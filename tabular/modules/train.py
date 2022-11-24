@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data import Dataset
 #%%
-def train_VAE(dataloader, model, config, optimizer, device):
+def train_VAE(dataset, dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
@@ -32,7 +32,7 @@ def train_VAE(dataloader, model, config, optimizer, device):
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=1).mean() 
+        recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -65,9 +65,9 @@ def train_VAE(dataloader, model, config, optimizer, device):
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, xhat
+    return logs
 #%%
-def train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer_D, device):
+def train_InfoMax(dataset, dataloader, model, discriminator, config, optimizer, optimizer_D, device):
     
     def permute_dims(z, device):
         B, _ = z.size()
@@ -98,7 +98,7 @@ def train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=1).mean() 
+        recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -143,9 +143,9 @@ def train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, xhat
+    return logs
 #%%
-def train_GAM(dataloader, model, config, optimizer, device):
+def train_GAM(dataset, dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
@@ -170,7 +170,7 @@ def train_GAM(dataloader, model, config, optimizer, device):
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch, 2).sum(axis=1).mean() 
+        recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -204,5 +204,5 @@ def train_GAM(dataloader, model, config, optimizer, device):
         for x, y in loss_:
             logs[x] = logs.get(x) + [y.item()]
     
-    return logs, xhat
+    return logs
 #%%

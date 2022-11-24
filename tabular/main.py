@@ -67,7 +67,7 @@ def get_args(debug):
                         help='VAE based model options: VAE, InfoMax, GAM')
 
     # causal structure
-    parser.add_argument("--node", default=4, type=int,
+    parser.add_argument("--node", default=3, type=int,
                         help="the number of nodes")
     parser.add_argument("--scm", default='linear', type=str,
                         help="SCM structure options: linear or nonlinear")
@@ -75,10 +75,10 @@ def get_args(debug):
                         help="the number of invertible NN flow")
     parser.add_argument("--inverse_loop", default=100, type=int,
                         help="the number of inverse loop")
-    parser.add_argument("--factor", default=[2, 1, 1], type=arg_as_list, 
+    parser.add_argument("--factor", default=[1, 1, 1], type=arg_as_list, 
                         help="Numbers of latents allocated to each factor in image")
     
-    parser.add_argument("--label_normalization", default=True, type=bool,
+    parser.add_argument("--label_normalization", default=False, type=bool,
                         help="If True, normalize additional information label data")
     parser.add_argument("--adjacency_scaling", default=True, type=bool,
                         help="If True, scaling adjacency matrix with in-degree")
@@ -98,7 +98,7 @@ def get_args(debug):
     # loss coefficients
     parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=1, type=float,
+    parser.add_argument('--lambda', default=0, type=float,
                         help='weight of label alignment loss')
     parser.add_argument('--gamma', default=1, type=float, # InfoMax
                         help='weight of f-divergence (lower bound of information)')
@@ -122,14 +122,28 @@ def main():
     #%%
     dataset = TabularDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    
+    from causallearn.search.ConstraintBased.PC import pc
+    from causallearn.utils.GraphUtils import GraphUtils
+    
+    cg = pc(data=dataset.train.to_numpy(), 
+            alpha=0.1, 
+            indep_test='fisherz') 
+    print(cg.G)
+    
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=dataset.continuous)
+    pdy.write_png('./assets/dag_train_loan.png')
+    fig = Image.open('./assets/dag_train_loan.png')
+    wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """
     Causal Adjacency Matrix
-    [CCAvg, Mortgage, Income] -> Age
-    Experience -> Age
+    [CCAvg, Mortgage] -> Income
+    [Experience, Age] -> Income
     """
     B = torch.zeros(config["node"], config["node"])
-    B[:3, -1] = 1
+    B[:-1, -1] = 1
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -156,7 +170,7 @@ def main():
         
     elif config["model"] == 'GAM':
         """Decoder masking"""
-        mask = [3, 1, 1]
+        mask = [2, 2, 1]
         from modules.model import GAM
         model = GAM(B, mask, config, device) 
     
@@ -174,11 +188,11 @@ def main():
     
     for epoch in range(config["epochs"]):
         if config["model"] == 'VAE':
-            logs, xhat = train_VAE(dataloader, model, config, optimizer, device)
+            logs = train_VAE(dataset, dataloader, model, config, optimizer, device)
         elif config["model"] == 'InfoMax':
-            logs, xhat = train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer_D, device)
+            logs = train_InfoMax(dataset, dataloader, model, discriminator, config, optimizer, optimizer_D, device)
         elif config["model"] == 'GAM':
-            logs, xhat = train_GAM(dataloader, model, config, optimizer, device)
+            logs = train_GAM(dataset, dataloader, model, config, optimizer, device)
         else:
             raise ValueError('Not supported model!')
         
@@ -192,6 +206,17 @@ def main():
     testdataset = TestTabularDataset(config)
     testdataloader = DataLoader(testdataset, batch_size=config["batch_size"], shuffle=True)
     #%%
+    train_recon = []
+    for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
+        if config["cuda"]:
+            x_batch = x_batch.cuda()
+            y_batch = y_batch.cuda()
+        
+        with torch.no_grad():
+            out = model(x_batch, deterministic=False)
+        train_recon.append(out[-1])
+    train_recon = torch.cat(train_recon, dim=0)
+    #%%
     test_recon = []
     for (x_batch, y_batch) in tqdm.tqdm(iter(testdataloader), desc="inner loop"):
         if config["cuda"]:
@@ -203,37 +228,71 @@ def main():
         test_recon.append(out[-1])
     test_recon = torch.cat(test_recon, dim=0)
     #%%
+    torch.manual_seed(config["seed"])
     randn = torch.randn(1000, config["node"])
     with torch.no_grad():
         _, latent, _ = model.transform(randn, log_determinant=False)
-        sample_recon = model.decode(latent)[1]
-        # sample_recon = model.decoder(torch.cat(latent, dim=1))
+        if config["model"] == 'GAM':
+            sample_recon = model.decode(latent)[1]
+        else:
+            sample_recon = model.decoder(torch.cat(latent, dim=1))
     #%%
     """PC algorithm : CPDAG"""
-    from causallearn.search.ConstraintBased.PC import pc
-    from causallearn.utils.GraphUtils import GraphUtils
+    cols = [item for sublist in dataset.topology for item in sublist]
+    train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
+    train_df = train_df[dataset.continuous]
     
-    cg = pc(data=test_recon.numpy(), 
+    cg = pc(data=train_df.to_numpy(), 
             alpha=0.1, 
             indep_test='fisherz') 
     print(cg.G)
     
     # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=testdataset.continuous)
-    pdy.write_png('./assets/dag_recon_loan.png')
-    fig = Image.open('./assets/dag_recon_loan.png')
+    pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
+    pdy.write_png('./assets/dag_recon_train_loan.png')
+    fig = Image.open('./assets/dag_recon_train_loan.png')
+    wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
+    #%%
+    cols = [item for sublist in dataset.topology for item in sublist]
+    test_df = pd.DataFrame(test_recon.numpy(), columns=cols)
+    test_df = test_df[dataset.continuous]
+    
+    cg = pc(data=test_df.to_numpy(), 
+            alpha=0.1, 
+            indep_test='fisherz') 
+    print(cg.G)
+    
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=test_df.columns)
+    pdy.write_png('./assets/dag_recon_test_loan.png')
+    fig = Image.open('./assets/dag_recon_test_loan.png')
     wandb.log({'Reconstructed DAG (Test)': wandb.Image(fig)})
+    #%%
+    cols = [item for sublist in dataset.topology for item in sublist]
+    sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
+    sample_df = sample_df[dataset.continuous]
     
-    cg = pc(data=sample_recon.numpy(), 
+    cg = pc(data=sample_df.to_numpy(), 
             alpha=0.1, 
             indep_test='fisherz') 
     print(cg.G)
     
     # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=testdataset.continuous)
-    pdy.write_png('./assets/dag_sample_loan.png')
-    fig = Image.open('./assets/dag_sample_loan.png')
+    pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
+    pdy.write_png('./assets/dag_recon_sample_loan.png')
+    fig = Image.open('./assets/dag_recon_sample_loan.png')
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
+    #%%
+    cg = pc(data=dataset.label, 
+            alpha=0.1, 
+            indep_test='fisherz') 
+    print(cg.G)
+    
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G)
+    pdy.write_png('./assets/dag_label_loan.png')
+    fig = Image.open('./assets/dag_label_loan.png')
+    wandb.log({'Label DAG': wandb.Image(fig)})
     #%%
     # """model save"""
     # torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
