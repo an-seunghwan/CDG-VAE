@@ -74,7 +74,7 @@ def main():
     )
     data, label, group = ACSIncome.df_to_numpy(df)
     df = pd.DataFrame(data, columns=ACSIncome.features)
-    df = df.sample(frac=1, random_state=seed).reset_index(drop=True)
+    df = df.sample(frac=1, random_state=1).reset_index(drop=True)
     #%%
     """PC algorithm : CPDAG"""
     from causallearn.search.ConstraintBased.PC import pc
