@@ -86,7 +86,7 @@ def get_args(debug):
                         help='input dimension')
     
     # optimization options
-    parser.add_argument('--epochs', default=100, type=int,
+    parser.add_argument('--epochs', default=200, type=int,
                         help='maximum iteration')
     parser.add_argument('--batch_size', default=256, type=int,
                         help='batch size')
