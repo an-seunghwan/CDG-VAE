@@ -49,7 +49,7 @@ class TabularDataset(Dataset):
         train = (train - min_) / (max_ - min_) 
         
         bijection = []
-        for i in range(len(self.opology)):
+        for i in range(len(self.topology)):
             if len(self.topology[i]) == 1:
                 bijection.append(train[self.topology[i]].to_numpy())
                 continue
@@ -106,7 +106,7 @@ class TestTabularDataset(Dataset):
         test = (test - min_) / (max_ - min_) # local statistic
         
         bijection = []
-        for i in range(len(self.opology)):
+        for i in range(len(self.topology)):
             if len(self.topology[i]) == 1:
                 bijection.append(test[self.topology[i]].to_numpy())
                 continue

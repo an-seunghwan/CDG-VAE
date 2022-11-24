@@ -23,9 +23,9 @@ def main():
     continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
     df = df[continuous]
     
+    min_ = df.min(axis=0)
+    max_ = df.max(axis=0)
     train = df.iloc[:4000]
-    min_ = train.min(axis=0)
-    max_ = train.max(axis=0)
     train = (train - min_) / (max_ - min_) # local statistic
     #%%
     """PC algorithm : CPDAG"""
