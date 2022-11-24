@@ -21,10 +21,10 @@ from modules.simulation import (
     is_dag,
 )
 
-# from modules.datasets import (
-#     LabeledDataset, 
-#     UnLabeledDataset,
-# )
+from modules.datasets import (
+    TabularDataset, 
+    TestTabularDataset,
+)
 
 from modules.train import (
     train_VAE,
@@ -32,22 +32,22 @@ from modules.train import (
     train_GAM,
 )
 #%%
-# import sys
-# import subprocess
-# try:
-#     import wandb
-# except:
-#     subprocess.check_call([sys.executable, "-m", "pip", "install", "wandb"])
-#     with open("./wandb_api.txt", "r") as f:
-#         key = f.readlines()
-#     subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
-#     import wandb
+import sys
+import subprocess
+try:
+    import wandb
+except:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "wandb"])
+    with open("./wandb_api.txt", "r") as f:
+        key = f.readlines()
+    subprocess.run(["wandb", "login"], input=key[0], encoding='utf-8')
+    import wandb
 
-# run = wandb.init(
-#     project="CausalDisentangled", 
-#     entity="anseunghwan",
-#     tags=["Tabular", "VAEBased"],
-# )
+run = wandb.init(
+    project="CausalDisentangled", 
+    entity="anseunghwan",
+    tags=["Tabular", "VAEBased"],
+)
 #%%
 import argparse
 import ast
@@ -96,7 +96,7 @@ def get_args(debug):
                         help='learning rate for discriminator in InfoMax')
     
     # loss coefficients
-    parser.add_argument('--beta', default=0.05, type=float,
+    parser.add_argument('--beta', default=0.1, type=float,
                         help='observation noise')
     parser.add_argument('--lambda', default=1, type=float,
                         help='weight of label alignment loss')
@@ -110,59 +110,16 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     config["cuda"] = torch.cuda.is_available()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-    # wandb.config.update(config)
+    wandb.config.update(config)
     
-    # set_random_seed(config["seed"])
+    set_random_seed(config["seed"])
     torch.manual_seed(config["seed"])
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
     #%%
-    class TabularDataset(Dataset): 
-        def __init__(self, config):
-            """
-            load dataset: Personal Loan
-            Reference: https://www.kaggle.com/datasets/teertha/personal-loan-modeling
-            """
-            df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
-            df = df.sample(frac=1, random_state=config["seed"]).reset_index(drop=True)
-            df = df.drop(columns=['ID'])
-             
-            self.continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
-            self.topology = [['CCAvg', 'Mortgage', 'Income'], ['Experience'], ['Age']]
-            df = df[self.continuous]
-            
-            from sklearn.decomposition import PCA
-            pca1 = PCA(n_components=2).fit_transform(df[self.topology[0]])
-            pca2 = PCA(n_components=1).fit_transform(df[self.topology[1]])
-            pca3 = PCA(n_components=1).fit_transform(df[self.topology[2]])
-            label = np.concatenate([pca1, pca2, pca3], axis=1)
-            
-            """bounded label: normalize to (0, 1)"""
-            if config["label_normalization"]: 
-                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0)) # global statistic
-            self.label = label[:4000, :]
-            
-            train = df.iloc[:4000]
-            
-            # continuous
-            mean = train.mean(axis=0)
-            std = train.std(axis=0)
-            train = (train - mean) / std # local statistic
-            
-            self.train = train
-            self.x_data = train.to_numpy()
-            
-        def __len__(self): 
-            return len(self.x_data)
-
-        def __getitem__(self, idx): 
-            x = torch.FloatTensor(self.x_data[idx])
-            y = torch.FloatTensor(self.label[idx])
-            return x, y
-    
     dataset = TabularDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     #%%
@@ -179,6 +136,7 @@ def main():
         indegree = B.sum(axis=0)
         mask = (indegree != 0)
         B[:, mask] = B[:, mask] / indegree[mask]
+    print(B)
     #%%
     """model"""
     if config["model"] == 'VAE':
@@ -228,53 +186,9 @@ def main():
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
         print(print_input)
         
-        # """update log"""
-        # wandb.log({x : np.mean(y) for x, y in logs.items()})
+        """update log"""
+        wandb.log({x : np.mean(y) for x, y in logs.items()})
     #%%
-    class TestTabularDataset(Dataset): 
-        def __init__(self, config):
-            """
-            load dataset: Personal Loan
-            Reference: https://www.kaggle.com/datasets/teertha/personal-loan-modeling
-            """
-            df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
-            df = df.sample(frac=1, random_state=config["seed"]).reset_index(drop=True)
-            df = df.drop(columns=['ID'])
-             
-            self.continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
-            self.topology = [['CCAvg', 'Mortgage', 'Income'], ['Experience'], ['Age']]
-            df = df[self.continuous]
-            
-            from sklearn.decomposition import PCA
-            pca1 = PCA(n_components=2).fit_transform(df[self.topology[0]])
-            pca2 = PCA(n_components=1).fit_transform(df[self.topology[1]])
-            pca3 = PCA(n_components=1).fit_transform(df[self.topology[2]])
-            label = np.concatenate([pca1, pca2, pca3], axis=1)
-            
-            """bounded label: normalize to (0, 1)"""
-            if config["label_normalization"]: 
-                label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0)) # global statistic
-            self.label = label[4000:, :]
-            
-            train = df.iloc[:4000]
-            test = df.iloc[4000:]
-            
-            # continuous
-            mean = train.mean(axis=0)
-            std = train.std(axis=0)
-            test = (test - mean) / std # local statistic
-            
-            self.test = test
-            self.x_data = test.to_numpy()
-            
-        def __len__(self): 
-            return len(self.x_data)
-
-        def __getitem__(self, idx): 
-            x = torch.FloatTensor(self.x_data[idx])
-            y = torch.FloatTensor(self.label[idx])
-            return x, y
-    
     testdataset = TestTabularDataset(config)
     testdataloader = DataLoader(testdataset, batch_size=config["batch_size"], shuffle=True)
     #%%
@@ -285,7 +199,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            out = model(x_batch, deterministic=True)
+            out = model(x_batch, deterministic=False)
         test_recon.append(out[-1])
     test_recon = torch.cat(test_recon, dim=0)
     #%%
@@ -293,13 +207,13 @@ def main():
     with torch.no_grad():
         _, latent, _ = model.transform(randn, log_determinant=False)
         sample_recon = model.decode(latent)[1]
+        # sample_recon = model.decoder(torch.cat(latent, dim=1))
     #%%
     """PC algorithm : CPDAG"""
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    # cg = pc(data=test_recon.numpy(), 
-    cg = pc(data=sample_recon.numpy(), 
+    cg = pc(data=test_recon.numpy(), 
             alpha=0.1, 
             indep_test='fisherz') 
     print(cg.G)
@@ -308,7 +222,18 @@ def main():
     pdy = GraphUtils.to_pydot(cg.G, labels=testdataset.continuous)
     pdy.write_png('./assets/dag_recon_loan.png')
     fig = Image.open('./assets/dag_recon_loan.png')
-    fig.show()
+    wandb.log({'Reconstructed DAG (Test)': wandb.Image(fig)})
+    
+    cg = pc(data=sample_recon.numpy(), 
+            alpha=0.1, 
+            indep_test='fisherz') 
+    print(cg.G)
+    
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=testdataset.continuous)
+    pdy.write_png('./assets/dag_sample_loan.png')
+    fig = Image.open('./assets/dag_sample_loan.png')
+    wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     # """model save"""
     # torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
@@ -320,7 +245,7 @@ def main():
     # artifact.add_file('./modules/model.py')
     # wandb.log_artifact(artifact)
     #%%
-    # wandb.run.finish()
+    wandb.run.finish()
 #%%
 if __name__ == '__main__':
     main()
