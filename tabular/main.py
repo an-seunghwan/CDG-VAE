@@ -241,14 +241,14 @@ def main():
         test_recon.append(out[-1])
     test_recon = torch.cat(test_recon, dim=0)
     #%%
-    # torch.manual_seed(config["seed"])
-    # randn = torch.randn(5000, config["node"])
-    # with torch.no_grad():
-    #     _, latent, _ = model.transform(randn, log_determinant=False)
-    #     if config["model"] == 'GAM':
-    #         sample_recon = model.decode(latent)[1]
-    #     else:
-    #         sample_recon = model.decoder(torch.cat(latent, dim=1))
+    torch.manual_seed(config["seed"])
+    randn = torch.randn(5000, config["node"])
+    with torch.no_grad():
+        _, latent, _ = model.transform(randn, log_determinant=False)
+        if config["model"] == 'GAM':
+            sample_recon = model.decode(latent)[1]
+        else:
+            sample_recon = model.decoder(torch.cat(latent, dim=1))
     #%%
     """PC algorithm : CPDAG"""
     cols = [item for sublist in dataset.topology for item in sublist]
@@ -297,20 +297,28 @@ def main():
     fig = Image.open('./assets/loan/dag_recon_test_loan.png')
     wandb.log({'Reconstructed DAG (Test)': wandb.Image(fig)})
     #%%
-    # cols = [item for sublist in dataset.topology for item in sublist]
-    # sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
-    # sample_df = sample_df[dataset.continuous]
+    cols = [item for sublist in dataset.topology for item in sublist]
+    sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
+    sample_df = sample_df[dataset.continuous]
     
-    # cg = pc(data=sample_df.to_numpy(), 
-    #         alpha=0.05, 
-    #         indep_test='fisherz') 
-    # print(cg.G)
+    cg = pc(data=sample_df.to_numpy(), 
+            alpha=0.05, 
+            indep_test='fisherz') 
+    print(cg.G)
     
-    # # visualization
-    # pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
-    # pdy.write_png('./assets/loan/dag_recon_sample_loan.png')
-    # fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
-    # wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
+    # SHD: https://arxiv.org/pdf/1306.1043.pdf
+    sampleSHD = (np.triu(trainG) != np.triu(cg.G.graph)).sum() # unmatch in upper-triangular
+    nonzero_idx = np.where(np.triu(cg.G.graph) != 0)
+    flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
+    nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
+    sampleSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
+    wandb.log({'SHD (Sample)': sampleSHD})
+    
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
+    pdy.write_png('./assets/loan/dag_recon_sample_loan.png')
+    fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
+    wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     # """model save"""
     # torch.save(model.state_dict(), './assets/model_{}_{}.pth'.format(config["model"], config["scm"]))
