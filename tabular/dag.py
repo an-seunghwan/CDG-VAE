@@ -22,25 +22,22 @@ def main():
     df = df.drop(columns=['ID'])
     continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
     df = df[continuous]
-    
-    min_ = df.min(axis=0)
-    max_ = df.max(axis=0)
-    train = df.iloc[:4000]
-    train = (train - min_) / (max_ - min_) # local statistic
     #%%
     """PC algorithm : CPDAG"""
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    cg = pc(data=train.to_numpy(), 
+    df_ = (df - df.mean(axis=0)) / df.std(axis=0)
+    
+    cg = pc(data=df_.to_numpy(), 
             alpha=0.05, 
             indep_test='chisq') 
     print(cg.G)
     
     # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=train.columns)
-    pdy.write_png('./assets/dag_loan.png')
-    fig = Image.open('./assets/dag_loan.png')
+    pdy = GraphUtils.to_pydot(cg.G, labels=df_.columns)
+    pdy.write_png('./assets/loan/dag_loan.png')
+    fig = Image.open('./assets/loan/dag_loan.png')
     fig.show()
     #%%
     """bijection"""
@@ -61,15 +58,19 @@ def main():
             b_rest %= 1
         return result
     
+    min_ = df_.min(axis=0)
+    max_ = df_.max(axis=0)
+    df = (df_ - min_) / (max_ - min_) 
+    
     topology = [['Mortgage', 'Income'], ['Experience', 'Age'], ['CCAvg']]
     bijection = []
     for i in range(len(topology)):
         if len(topology[i]) == 1:
-            bijection.append(train[topology[i]].to_numpy())
+            bijection.append(df[topology[i]].to_numpy())
             continue
-        train_tmp = train[topology[i]].to_numpy()
+        df_tmp = df[topology[i]].to_numpy()
         bijection_tmp = []
-        for x, y in train_tmp:
+        for x, y in df_tmp:
             bijection_tmp.append(interleave_float(x, y))
         bijection.append(np.array([bijection_tmp]).T)
     bijection = np.concatenate(bijection, axis=1)
@@ -80,9 +81,9 @@ def main():
     print(cg.G)
     
     # visualization
-    pdy = GraphUtils.to_pydot(cg.G)
-    pdy.write_png('./assets/dag_bijection_loan.png')
-    fig = Image.open('./assets/dag_bijection_loan.png')
+    pdy = GraphUtils.to_pydot(cg.G, labels=['u1', 'u2', 'u3'])
+    pdy.write_png('./assets/loan/dag_bijection_loan.png')
+    fig = Image.open('./assets/loan/dag_bijection_loan.png')
     fig.show()
     #%%
     # """
