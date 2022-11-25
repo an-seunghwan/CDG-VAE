@@ -40,39 +40,28 @@ class TabularDataset(Dataset):
         self.continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
         self.topology = [['Mortgage', 'Income'], ['Experience', 'Age'], ['CCAvg']]
         self.flatten_topology =  [self.continuous.index(item) for sublist in self.topology for item in sublist]
-        
         df = df[self.continuous]
         
-        min_ = df.min(axis=0)
-        max_ = df.max(axis=0)
-        train = df.iloc[:4000]
-        train = (train - min_) / (max_ - min_) 
+        df_ = (df - df.mean(axis=0)) / df.std(axis=0)
+        train = df_.iloc[:4000]
+        
+        min_ = df_.min(axis=0)
+        max_ = df_.max(axis=0)
+        df = (df_ - min_) / (max_ - min_) 
         
         bijection = []
         for i in range(len(self.topology)):
             if len(self.topology[i]) == 1:
-                bijection.append(train[self.topology[i]].to_numpy())
+                bijection.append(df[self.topology[i]].to_numpy())
                 continue
-            train_tmp = train[self.topology[i]].to_numpy()
+            df_tmp = df[self.topology[i]].to_numpy()
             bijection_tmp = []
-            for x, y in train_tmp:
+            for x, y in df_tmp:
                 bijection_tmp.append(interleave_float(x, y))
             bijection.append(np.array([bijection_tmp]).T)
         bijection = np.concatenate(bijection, axis=1)
-        self.label = bijection
+        self.label = bijection[:4000, :]
             
-        # from sklearn.decomposition import PCA
-        # pca1 = PCA(n_components=1).fit_transform(df[self.topology[0]])
-        # pca2 = PCA(n_components=1).fit_transform(df[self.topology[1]])
-        # pca3 = PCA(n_components=1).fit_transform(df[self.topology[2]])
-        # label = np.concatenate([pca1, pca2, pca3], axis=1)
-        
-        # """bounded label: normalize to (0, 1)"""
-        # if config["label_normalization"]: 
-        #     # label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0)) # global statistic
-        #     label = (label - label.mean(axis=0)) / label.std(axis=0)
-        # self.label = label[:4000, :]
-        
         self.train = train
         self.x_data = train.to_numpy()
         
@@ -97,39 +86,28 @@ class TestTabularDataset(Dataset):
         self.continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
         self.topology = [['Mortgage', 'Income'], ['Experience', 'Age'], ['CCAvg']]
         self.flatten_topology =  [self.continuous.index(item) for sublist in self.topology for item in sublist]
-        
         df = df[self.continuous]
         
-        min_ = df.min(axis=0)
-        max_ = df.max(axis=0)
-        test = df.iloc[4000:]
-        test = (test - min_) / (max_ - min_) # local statistic
+        df_ = (df - df.mean(axis=0)) / df.std(axis=0)
+        test = df_.iloc[4000:]
+        
+        min_ = df_.min(axis=0)
+        max_ = df_.max(axis=0)
+        df = (df_ - min_) / (max_ - min_) 
         
         bijection = []
         for i in range(len(self.topology)):
             if len(self.topology[i]) == 1:
-                bijection.append(test[self.topology[i]].to_numpy())
+                bijection.append(df[self.topology[i]].to_numpy())
                 continue
-            test_tmp = test[self.topology[i]].to_numpy()
+            df_tmp = df[self.topology[i]].to_numpy()
             bijection_tmp = []
-            for x, y in test_tmp:
+            for x, y in df_tmp:
                 bijection_tmp.append(interleave_float(x, y))
             bijection.append(np.array([bijection_tmp]).T)
         bijection = np.concatenate(bijection, axis=1)
-        self.label = bijection
+        self.label = bijection[4000:, :]
             
-        # from sklearn.decomposition import PCA
-        # pca1 = PCA(n_components=1).fit_transform(df[self.topology[0]])
-        # pca2 = PCA(n_components=1).fit_transform(df[self.topology[1]])
-        # pca3 = PCA(n_components=1).fit_transform(df[self.topology[2]])
-        # label = np.concatenate([pca1, pca2, pca3], axis=1)
-        
-        # """bounded label: normalize to (0, 1)"""
-        # if config["label_normalization"]: 
-        #     # label = (label - label.min(axis=0)) / (label.max(axis=0) - label.min(axis=0)) # global statistic
-        #     label = (label - label.mean(axis=0)) / label.std(axis=0)
-        # self.label = label[:4000, :]
-        
         self.test = test
         self.x_data = test.to_numpy()
         
