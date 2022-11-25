@@ -22,6 +22,9 @@ def main():
     df = df.drop(columns=['ID'])
     continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
     df = df[continuous]
+    
+    if not os.path.exists('./assets/loan'):
+        os.makedirs('./assets/loan')
     #%%
     """PC algorithm : CPDAG"""
     from causallearn.search.ConstraintBased.PC import pc
