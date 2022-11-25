@@ -98,7 +98,7 @@ def get_args(debug):
     # loss coefficients
     parser.add_argument('--beta', default=0.01, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=1, type=float,
                         help='weight of label alignment loss')
     parser.add_argument('--gamma', default=1, type=float, # InfoMax
                         help='weight of f-divergence (lower bound of information)')
@@ -133,14 +133,14 @@ def main():
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=dataset.continuous)
-    pdy.write_png('./assets/dag_train_loan.png')
-    fig = Image.open('./assets/dag_train_loan.png')
+    pdy.write_png('./assets/loan/dag_train_loan.png')
+    fig = Image.open('./assets/loan/dag_train_loan.png')
     wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """
     Causal Adjacency Matrix
-    [CCAvg, Mortgage] -> Income
-    [Experience, Age] -> Income
+    [Mortgage, Income] -> CCAvg
+    [Experience, Age] -> CCAvg
     """
     B = torch.zeros(config["node"], config["node"])
     B[:-1, -1] = 1
@@ -229,7 +229,7 @@ def main():
     test_recon = torch.cat(test_recon, dim=0)
     #%%
     torch.manual_seed(config["seed"])
-    randn = torch.randn(1000, config["node"])
+    randn = torch.randn(5000, config["node"])
     with torch.no_grad():
         _, latent, _ = model.transform(randn, log_determinant=False)
         if config["model"] == 'GAM':
@@ -238,20 +238,20 @@ def main():
             sample_recon = model.decoder(torch.cat(latent, dim=1))
     #%%
     """PC algorithm : CPDAG"""
-    # cols = [item for sublist in dataset.topology for item in sublist]
-    # train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
-    # train_df = train_df[dataset.continuous]
+    cols = [item for sublist in dataset.topology for item in sublist]
+    train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
+    train_df = train_df[dataset.continuous]
     
-    # cg = pc(data=train_df.to_numpy(), 
-    #         alpha=0.05, 
-    #         indep_test='chisq') 
-    # print(cg.G)
+    cg = pc(data=train_df.to_numpy(), 
+            alpha=0.05, 
+            indep_test='fisherz') 
+    print(cg.G)
     
-    # # visualization
-    # pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
-    # pdy.write_png('./assets/dag_recon_train_loan.png')
-    # fig = Image.open('./assets/dag_recon_train_loan.png')
-    # wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
+    pdy.write_png('./assets/loan/dag_recon_train_loan.png')
+    fig = Image.open('./assets/loan/dag_recon_train_loan.png')
+    wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
     #%%
     cols = [item for sublist in dataset.topology for item in sublist]
     test_df = pd.DataFrame(test_recon.numpy(), columns=cols)
@@ -259,13 +259,13 @@ def main():
     
     cg = pc(data=test_df.to_numpy(), 
             alpha=0.05, 
-            indep_test='chisq') 
+            indep_test='fisherz') 
     print(cg.G)
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=test_df.columns)
-    pdy.write_png('./assets/dag_recon_test_loan.png')
-    fig = Image.open('./assets/dag_recon_test_loan.png')
+    pdy.write_png('./assets/loan/dag_recon_test_loan.png')
+    fig = Image.open('./assets/loan/dag_recon_test_loan.png')
     wandb.log({'Reconstructed DAG (Test)': wandb.Image(fig)})
     #%%
     cols = [item for sublist in dataset.topology for item in sublist]
@@ -274,13 +274,13 @@ def main():
     
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
-            indep_test='chisq') 
+            indep_test='fisherz') 
     print(cg.G)
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
-    pdy.write_png('./assets/dag_recon_sample_loan.png')
-    fig = Image.open('./assets/dag_recon_sample_loan.png')
+    pdy.write_png('./assets/loan/dag_recon_sample_loan.png')
+    fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     # """model save"""
