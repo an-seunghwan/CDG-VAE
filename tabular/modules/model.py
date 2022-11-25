@@ -208,17 +208,11 @@ class GAM(nn.Module):
         self.device = device
         
         """encoder"""
-        # self.encoder = nn.Sequential(
-        #     nn.Linear(config["input_dim"], 4),
-        #     nn.ELU(),
-        #     nn.Linear(4, config["node"] * 2),
-        # ).to(device)
-        self.encoder = nn.ModuleList(
-            [nn.Sequential(
-                nn.Linear(m, 2),
-                nn.ELU(),
-                nn.Linear(2, k * 2),
-            ).to(device) for k, m in zip(config["factor"], self.mask)])
+        self.encoder = nn.Sequential(
+            nn.Linear(config["input_dim"], 4),
+            nn.ELU(),
+            nn.Linear(4, config["node"] * 2),
+        ).to(device)
         
         """Causal Adjacency Matrix"""
         self.B = B.to(device) 
@@ -248,12 +242,8 @@ class GAM(nn.Module):
         return inverse_latent
     
     def get_posterior(self, input):
-        # h = self.encoder(nn.Flatten()(input)) # [batch, node * 2]
-        # mean, logvar = torch.split(h, self.config["node"], dim=1)
-        input = torch.split(input, self.mask, dim=-1)
-        h = [torch.split(D(z), k, dim=1) for D, z, k in zip(self.encoder, input, self.config["factor"])]
-        mean = torch.cat([h_[0] for h_ in h], dim=1)
-        logvar = torch.cat([h_[1] for h_ in h], dim=1)
+        h = self.encoder(nn.Flatten()(input)) # [batch, node * 2]
+        mean, logvar = torch.split(h, self.config["node"], dim=1)
         return mean, logvar
     
     def transform(self, input, log_determinant=False):
@@ -281,7 +271,7 @@ class GAM(nn.Module):
         latent = torch.cat(input, axis=1)
         latent = torch.split(latent, self.config["factor"], dim=-1)
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = torch.cat(xhat_separated, dim=1)
+        xhat = torch.sigmoid(torch.cat(xhat_separated, dim=1))
         return xhat_separated, xhat
     
     def forward(self, input, deterministic=False, log_determinant=False):
@@ -305,18 +295,18 @@ def main():
     config = {
         "input_dim": 5,
         "n": 10,
-        "node": 4,
+        "node": 3,
         "flow_num": 1,
         "inverse_loop": 100,
         "scm": 'nonlinear',
-        "factor": [2, 1, 1],
+        "factor": [1, 1, 1],
     }
     
     B = torch.zeros(config["node"], config["node"])
-    B[:3, -1] = 1
+    B[:2, -1] = 1
     #%%
     """CDG-VAE"""
-    mask = [3, 1, 1]
+    mask = [2, 2, 1]
     
     model = GAM(B, mask, config, 'cpu')
     for x in model.parameters():
