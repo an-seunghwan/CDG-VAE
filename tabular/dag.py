@@ -32,7 +32,7 @@ def main():
     
     df_ = (df - df.mean(axis=0)) / df.std(axis=0)
     
-    cg = pc(data=df_.to_numpy(), 
+    cg = pc(data=df_.to_numpy()[:4000, :], 
             alpha=0.05, 
             indep_test='chisq') 
     print(cg.G)
@@ -78,7 +78,7 @@ def main():
         bijection.append(np.array([bijection_tmp]).T)
     bijection = np.concatenate(bijection, axis=1)
     #%%
-    cg = pc(data=bijection, 
+    cg = pc(data=bijection[:4000, :], 
             alpha=0.05, 
             indep_test='chisq') 
     print(cg.G)

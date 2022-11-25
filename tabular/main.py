@@ -260,6 +260,7 @@ def main():
             indep_test='fisherz') 
     print(cg.G)
     
+    # SHD: https://arxiv.org/pdf/1306.1043.pdf
     trainSHD = (np.triu(trainG) != np.triu(cg.G.graph)).sum() # unmatch in upper-triangular
     nonzero_idx = np.where(np.triu(cg.G.graph) != 0)
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
@@ -282,6 +283,7 @@ def main():
             indep_test='fisherz') 
     print(cg.G)
     
+    # SHD: https://arxiv.org/pdf/1306.1043.pdf
     testSHD = (np.triu(testG) != np.triu(cg.G.graph)).sum() # unmatch in upper-triangular
     nonzero_idx = np.where(np.triu(cg.G.graph) != 0)
     flag = np.triu(testG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
