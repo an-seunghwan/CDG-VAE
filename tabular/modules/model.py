@@ -271,7 +271,7 @@ class GAM(nn.Module):
         latent = torch.cat(input, axis=1)
         latent = torch.split(latent, self.config["factor"], dim=-1)
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = torch.sigmoid(torch.cat(xhat_separated, dim=1))
+        xhat = torch.cat(xhat_separated, dim=1)
         return xhat_separated, xhat
     
     def forward(self, input, deterministic=False, log_determinant=False):
