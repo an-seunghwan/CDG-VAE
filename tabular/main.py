@@ -265,7 +265,7 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     trainSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
-    wandb.log({'SHD: Reconstructed DAG (Train)': trainSHD})
+    wandb.log({'SHD (Train)': trainSHD})
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
@@ -287,7 +287,7 @@ def main():
     flag = np.triu(testG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     testSHD += (np.tril(testG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
-    wandb.log({'SHD: Reconstructed DAG (Test)': testSHD})
+    wandb.log({'SHD (Test)': testSHD})
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=test_df.columns)
