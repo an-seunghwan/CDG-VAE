@@ -1,17 +1,17 @@
 project: CausalDisentangled
-program: main.py
-# program: inference.py
+# program: main.py
+program: inference.py
 method: grid
 metric:
   goal: minimize
   name: loss
 parameters:
-  # num:
-  #   values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-  seed:
-    values: [1, 14, 28, 36, 39, 74, 76, 83, 91, 95]
-  model:
-    values: ['VAE', 'InfoMax', 'GAM']
+  num:
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  # seed:
+  #   values: [1, 14, 28, 36, 39, 74, 76, 83, 91, 95]
+  # model:
+  #   values: ['VAE', 'InfoMax', 'GAM']
 
   # scm:
   #   values: ['linear', 'nonlinear']
