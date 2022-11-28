@@ -337,6 +337,7 @@ class TVAE(nn.Module):
                 nn.ReLU(),
                 nn.Linear(32, m),
             ).to(device) for k, m in zip(config["factor"], self.mask)])
+        self.sigma = nn.Parameter(torch.ones(config["input_dim"]) * 0.1)
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
