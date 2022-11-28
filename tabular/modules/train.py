@@ -269,6 +269,7 @@ def train_TVAE(output_info_list, dataset, dataloader, model, config, optimizer, 
             loss_.append(('posterior_variance{}'.format(i+1), var_[i]))
         
         loss = recon + KL 
+        loss += config["lambda"] * align
         loss_.append(('loss', loss))
         
         loss.backward()

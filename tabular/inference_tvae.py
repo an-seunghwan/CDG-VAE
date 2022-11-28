@@ -21,10 +21,9 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.datasets import (
-    TabularDataset, 
-    TestTabularDataset,
-)
+from modules.model import TVAE
+
+from modules.datasets import TabularDataset2
 #%%
 import sys
 import subprocess
@@ -59,9 +58,7 @@ def main():
     #%%
     config = vars(get_args(debug=False)) # default configuration
     
-    # model_name = 'VAE'
-    # model_name = 'InfoMax'
-    model_name = 'GAM'
+    model_name = 'TVAE'
     
     scm = 'linear'
     # scm = 'nonlinear'
@@ -85,23 +82,8 @@ def main():
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
     #%%
-    dataset = TabularDataset(config)
+    dataset = TabularDataset2(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
-    
-    from causallearn.search.ConstraintBased.PC import pc
-    from causallearn.utils.GraphUtils import GraphUtils
-    
-    cg = pc(data=dataset.train.to_numpy(), 
-            alpha=0.05, 
-            indep_test='chisq') 
-    print(cg.G)
-    trainG = cg.G.graph
-    
-    # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=dataset.continuous)
-    pdy.write_png('./assets/loan/dag_train_loan.png')
-    fig = Image.open('./assets/loan/dag_train_loan.png')
-    wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """
     Causal Adjacency Matrix
@@ -119,31 +101,16 @@ def main():
     print(B)
     #%%
     """model"""
-    if config["model"] == 'VAE':
-        from modules.model import VAE
-        model = VAE(B, config, device) 
-        
-    elif config["model"] == 'InfoMax':
-        from modules.model import VAE, Discriminator
-        model = VAE(B, config, device) 
-        discriminator = Discriminator(config, device)
-        discriminator = discriminator.to(device)
-        
-        optimizer_D = torch.optim.Adam(
-            discriminator.parameters(), 
-            lr=config["lr_D"]
-        )
-        
-    elif config["model"] == 'GAM':
-        """Decoder masking"""
-        mask = [2, 2, 1]
-        from modules.model import GAM
-        model = GAM(B, mask, config, device) 
+    decoder_dims = []
+    for l in dataset.transformer.output_info_list:
+        decoder_dims.append(sum([x.dim for x in l]))
+    mask_ = [0, 2, 2, 1]
+    mask_ = np.cumsum(mask_)
+    mask = []
+    for j in range(len(mask_) - 1):
+        mask.append(sum(decoder_dims[mask_[j]:mask_[j+1]]))
     
-    else:
-        raise ValueError('Not supported model!')
-        
-    model = model.to(device)
+    model = TVAE(B, mask, config, device).to(device)
     
     if config["cuda"]:
         model.load_state_dict(
@@ -159,6 +126,9 @@ def main():
     
     model.eval()
     #%%
+    from causallearn.search.ConstraintBased.PC import pc
+    from causallearn.utils.GraphUtils import GraphUtils
+    
     df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
     df = df.sample(frac=1, random_state=1).reset_index(drop=True)
     df = df.drop(columns=['ID'])
@@ -179,7 +149,7 @@ def main():
     pdy = GraphUtils.to_pydot(cg.G, labels=df.columns)
     pdy.write_png('./assets/loan/dag_train_loan.png')
     fig = Image.open('./assets/loan/dag_train_loan.png')
-    # wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
+    wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """train dataset representation"""
     train_recon = []
@@ -208,13 +178,13 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     trainSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
-    # wandb.log({'SHD (Train)': trainSHD})
+    wandb.log({'SHD (Train)': trainSHD})
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=train_recon.columns)
     pdy.write_png('./assets/loan/dag_recon_train_loan.png')
     fig = Image.open('./assets/loan/dag_recon_train_loan.png')
-    # wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
+    wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
     #%%
     """synthetic dataset"""
     torch.manual_seed(config["seed"])
@@ -247,13 +217,13 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     sampleSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
-    # wandb.log({'SHD (Sample)': sampleSHD})
+    wandb.log({'SHD (Sample)': sampleSHD})
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
     pdy.write_png('./assets/loan/dag_recon_sample_loan.png')
     fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
-    # wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
+    wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     """Machine Learning Efficacy"""
     import statsmodels.api as sm
@@ -265,7 +235,7 @@ def main():
     pred = linreg.predict(test[covariates])
     rsq_baseline = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
     print("Baseline R-squared: {:.2f}".format(rsq_baseline))
-    # wandb.log({'R^2 (Baseline)': rsq_baseline})
+    wandb.log({'R^2 (Baseline)': rsq_baseline})
     #%%
     # Train
     covariates = [x for x in sample_df.columns if x != 'CCAvg']
@@ -274,7 +244,7 @@ def main():
     pred = linreg.predict(test[covariates])
     rsq = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
     print("CDG-TVAE R-squared: {:.2f}".format(rsq))
-    # wandb.log({'R^2 (Sample)': rsq})
+    wandb.log({'R^2 (Sample)': rsq})
     #%%
     wandb.run.finish()
 #%%

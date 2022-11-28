@@ -329,13 +329,13 @@ class TVAE(nn.Module):
         """decoder"""
         self.decoder = nn.ModuleList(
             [nn.Sequential(
-                nn.Linear(k, 16),
+                nn.Linear(k, 8),
                 nn.ReLU(),
-                nn.Linear(16, 16),
+                nn.Linear(8, 8),
                 nn.ReLU(),
-                nn.Linear(16, 32),
+                nn.Linear(8, 16),
                 nn.ReLU(),
-                nn.Linear(32, m),
+                nn.Linear(16, m),
             ).to(device) for k, m in zip(config["factor"], self.mask)])
         self.sigma = nn.Parameter(torch.ones(config["input_dim"]) * 0.1)
         
