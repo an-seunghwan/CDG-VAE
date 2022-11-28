@@ -79,7 +79,7 @@ def get_args(debug):
                         help="If True, scaling adjacency matrix with in-degree")
     
     # optimization options
-    parser.add_argument('--epochs', default=200, type=int,
+    parser.add_argument('--epochs', default=300, type=int,
                         help='maximum iteration')
     parser.add_argument('--batch_size', default=256, type=int,
                         help='batch size')
