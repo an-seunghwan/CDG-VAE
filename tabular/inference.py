@@ -161,19 +161,8 @@ def main():
     #%%
     testdataset = TestTabularDataset(config)
     testdataloader = DataLoader(testdataset, batch_size=config["batch_size"], shuffle=True)
-    
-    cg = pc(data=testdataset.test.to_numpy(), 
-            alpha=0.05, 
-            indep_test='chisq') 
-    print(cg.G)
-    testG = cg.G.graph
-    
-    # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=testdataset.continuous)
-    pdy.write_png('./assets/loan/dag_test_loan.png')
-    fig = Image.open('./assets/loan/dag_test_loan.png')
-    wandb.log({'Baseline DAG (Test)': wandb.Image(fig)})
     #%%
+    """train dataset representation"""
     train_recon = []
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
         if config["cuda"]:
@@ -185,17 +174,7 @@ def main():
         train_recon.append(out[-1])
     train_recon = torch.cat(train_recon, dim=0)
     #%%
-    test_recon = []
-    for (x_batch, y_batch) in tqdm.tqdm(iter(testdataloader), desc="inner loop"):
-        if config["cuda"]:
-            x_batch = x_batch.cuda()
-            y_batch = y_batch.cuda()
-        
-        with torch.no_grad():
-            out = model(x_batch, deterministic=True)
-        test_recon.append(out[-1])
-    test_recon = torch.cat(test_recon, dim=0)
-    #%%
+    """synthetic dataset"""
     torch.manual_seed(config["seed"])
     randn = torch.randn(4000, config["node"])
     with torch.no_grad():
@@ -205,7 +184,7 @@ def main():
         else:
             sample_recon = model.decoder(torch.cat(latent, dim=1))
     #%%
-    """PC algorithm : CPDAG"""
+    """PC algorithm : train dataset representation"""
     cols = [item for sublist in dataset.topology for item in sublist]
     train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
     train_df = train_df[dataset.continuous]
@@ -229,29 +208,7 @@ def main():
     fig = Image.open('./assets/loan/dag_recon_train_loan.png')
     wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
     #%%
-    cols = [item for sublist in dataset.topology for item in sublist]
-    test_df = pd.DataFrame(test_recon.numpy(), columns=cols)
-    test_df = test_df[dataset.continuous]
-    
-    cg = pc(data=test_df.to_numpy(), 
-            alpha=0.05, 
-            indep_test='fisherz') 
-    print(cg.G)
-    
-    # SHD: https://arxiv.org/pdf/1306.1043.pdf
-    testSHD = (np.triu(testG) != np.triu(cg.G.graph)).sum() # unmatch in upper-triangular
-    nonzero_idx = np.where(np.triu(cg.G.graph) != 0)
-    flag = np.triu(testG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
-    nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
-    testSHD += (np.tril(testG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
-    wandb.log({'SHD (Test)': testSHD})
-    
-    # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=test_df.columns)
-    pdy.write_png('./assets/loan/dag_recon_test_loan.png')
-    fig = Image.open('./assets/loan/dag_recon_test_loan.png')
-    wandb.log({'Reconstructed DAG (Test)': wandb.Image(fig)})
-    #%%
+    """PC algorithm : synthetic dataset"""
     cols = [item for sublist in dataset.topology for item in sublist]
     sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
     sample_df = sample_df[dataset.continuous]
@@ -287,7 +244,7 @@ def main():
     print("Baseline R-squared: {:.2f}".format(rsq_baseline))
     wandb.log({'R^2 (Baseline)': rsq_baseline})
     #%%
-    # Train
+    # synthetic
     covariates = [x for x in sample_df.columns if x != 'CCAvg']
     linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
     linreg.summary()
