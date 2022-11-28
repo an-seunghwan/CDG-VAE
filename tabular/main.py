@@ -189,6 +189,16 @@ def main():
         """update log"""
         wandb.log({x : np.mean(y) for x, y in logs.items()})
     #%%
+    """model save"""
+    torch.save(model.state_dict(), './assets/tabular_model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact = wandb.Artifact('tabular_model_{}_{}'.format(config["model"], config["scm"]), 
+                            type='model',
+                            metadata=config) # description=""
+    artifact.add_file('./assets/tabular_model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact.add_file('./main.py')
+    artifact.add_file('./modules/model.py')
+    wandb.log_artifact(artifact)
+    #%%
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
