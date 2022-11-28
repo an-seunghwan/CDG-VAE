@@ -57,7 +57,7 @@ def get_args(debug):
 #%%
 def main():
     #%%
-    config = vars(get_args(debug=True)) # default configuration
+    config = vars(get_args(debug=False)) # default configuration
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
@@ -197,7 +197,7 @@ def main():
     test_recon = torch.cat(test_recon, dim=0)
     #%%
     torch.manual_seed(config["seed"])
-    randn = torch.randn(5000, config["node"])
+    randn = torch.randn(4000, config["node"])
     with torch.no_grad():
         _, latent, _ = model.transform(randn, log_determinant=False)
         if config["model"] == 'GAM':
@@ -275,7 +275,26 @@ def main():
     fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
+    """Machine Learning Efficacy"""
+    import statsmodels.api as sm
     
+    # Baseline
+    covariates = [x for x in dataset.train.columns if x != 'CCAvg']
+    linreg = sm.OLS(dataset.train['CCAvg'], dataset.train[covariates]).fit()
+    linreg.summary()
+    pred = linreg.predict(testdataset.test[covariates])
+    rsq_baseline = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
+    print("Baseline R-squared: {:.2f}".format(rsq_baseline))
+    wandb.log({'R^2 (Baseline)': rsq_baseline})
+    #%%
+    # Train
+    covariates = [x for x in sample_df.columns if x != 'CCAvg']
+    linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
+    linreg.summary()
+    pred = linreg.predict(testdataset.test[covariates])
+    rsq = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
+    print("{}-{} R-squared: {:.2f}".format(config["model"], config["scm"], rsq))
+    wandb.log({'R^2 (Sample)': rsq})
     #%%
     wandb.run.finish()
 #%%
