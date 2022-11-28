@@ -13,30 +13,22 @@ import matplotlib.pyplot as plt
 def main():
     #%%
     """
-    load dataset: Adult
+    load dataset: House Sales in King County, USA
     Reference: 
-    https://archive.ics.uci.edu/ml/datasets/Adult
+    https://www.kaggle.com/datasets/harlfoxem/housesalesprediction
     """
-    df = pd.read_csv('./data/adult.csv')
+    df = pd.read_csv('./data/kc_house_data.csv')
     df = df.sample(frac=1, random_state=1).reset_index(drop=True)
-    df = df[(df == '?').sum(axis=1) == 0]
-    # The goal of this machine learning project is to predict 
-    # whether a person makes over 50K a year or not given their demographic variation. 
-    # This is a classification problem.
-    df['income'] = df['income'].map({'<=50K': 0, '>50K': 1, '<=50K.': 0, '>50K.': 1})
+    df['price'] = df['price'].map(lambda x: 1 if 450000 < x else 0)
     df.head()
     #%%
-    # categorical = ['workclass', 'education', 'marital-status', 
-    #                'occupation', 'relationship', 'race',
-    #                'gender', 'native-country', 'income']
-    categorical = ['income',
-                   'workclass', 'education', 'marital-status', 
-                   'occupation', 'relationship', 'race',
-                   'gender']
+    categorical = ['bedrooms', 'bathrooms', 'floors', 
+                   'condition', 'grade', 'waterfront', 'view', 
+                   'price',]
     df = df[categorical]
     
-    if not os.path.exists('./assets/adult'):
-        os.makedirs('./assets/adult')
+    if not os.path.exists('./assets/king'):
+        os.makedirs('./assets/king')
     #%%
     """PC algorithm : CPDAG"""
     from causallearn.search.ConstraintBased.PC import pc
@@ -49,8 +41,8 @@ def main():
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=df.columns)
-    pdy.write_png('./assets/adult/dag_adult.png')
-    fig = Image.open('./assets/adult/dag_adult.png')
+    pdy.write_png('./assets/king/dag_king.png')
+    fig = Image.open('./assets/king/dag_king.png')
     fig.show()
     #%%
     # """bijection"""
