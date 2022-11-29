@@ -26,9 +26,6 @@ def main():
     df['income'] = df['income'].map({'<=50K': 0, '>50K': 1, '<=50K.': 0, '>50K.': 1})
     df.head()
     #%%
-    # categorical = ['workclass', 'education', 'marital-status', 
-    #                'occupation', 'relationship', 'race',
-    #                'gender', 'native-country', 'income']
     categorical = [
         'income', 
         'educational-num', 
