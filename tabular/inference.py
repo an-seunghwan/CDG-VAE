@@ -59,9 +59,9 @@ def main():
     #%%
     config = vars(get_args(debug=False)) # default configuration
     
-    model_name = 'VAE'
+    # model_name = 'VAE'
     # model_name = 'InfoMax'
-    # model_name = 'GAM'
+    model_name = 'GAM'
     
     scm = 'linear'
     # scm = 'nonlinear'
