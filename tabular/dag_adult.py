@@ -32,7 +32,9 @@ def main():
         ]
     df = df[continuous]
     
-    df_ = (df - df.mean(axis=0)) / df.std(axis=0)
+    scaling = [x for x in continuous if x != 'income']
+    df_ = df.copy()
+    df_[scaling] = (df[scaling] - df[scaling].mean(axis=0)) / df[scaling].std(axis=0)
     
     if not os.path.exists('./assets/adult'):
         os.makedirs('./assets/adult')
