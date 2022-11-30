@@ -83,7 +83,7 @@ class TabularDataset(Dataset):
             self.flatten_topology =  [self.continuous.index(item) for sublist in self.topology for item in sublist]
             df = df[self.continuous]
             
-            scaling = [x for x in continuous if x != 'income']
+            scaling = [x for x in self.continuous if x != 'income']
             df_ = df.copy()
             df_[scaling] = (df[scaling] - df[scaling].mean(axis=0)) / df[scaling].std(axis=0)
             # df_ = (df - df.mean(axis=0)) / df.std(axis=0)
@@ -179,7 +179,7 @@ class TestTabularDataset(Dataset):
             self.flatten_topology =  [self.continuous.index(item) for sublist in self.topology for item in sublist]
             df = df[self.continuous]
             
-            scaling = [x for x in continuous if x != 'income']
+            scaling = [x for x in self.continuous if x != 'income']
             df_ = df.copy()
             df_[scaling] = (df[scaling] - df[scaling].mean(axis=0)) / df[scaling].std(axis=0)
             # df_ = (df - df.mean(axis=0)) / df.std(axis=0)
