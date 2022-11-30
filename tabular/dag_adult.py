@@ -14,8 +14,7 @@ def main():
     #%%
     """
     load dataset: Adult
-    Reference: 
-    https://archive.ics.uci.edu/ml/datasets/Adult
+    Reference: https://archive.ics.uci.edu/ml/datasets/Adult
     """
     df = pd.read_csv('./data/adult.csv')
     df = df.sample(frac=1, random_state=1).reset_index(drop=True)
@@ -26,12 +25,12 @@ def main():
     df['income'] = df['income'].map({'<=50K': 0, '>50K': 1, '<=50K.': 0, '>50K.': 1})
     df.head()
     #%%
-    categorical = [
+    continuous = [
         'income', 
         'educational-num', 
         'capital-gain', 'capital-loss', 'hours-per-week',
         ]
-    df = df[categorical]
+    df = df[continuous]
     
     df_ = (df - df.mean(axis=0)) / df.std(axis=0)
     
@@ -42,7 +41,7 @@ def main():
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    cg = pc(data=df_.to_numpy(), 
+    cg = pc(data=df_.to_numpy()[:40000, :], 
             alpha=0.05, 
             indep_test='chisq') 
     print(cg.G)
@@ -96,7 +95,7 @@ def main():
             bijection.append(np.array([bijection_tmp]).T)
     bijection = np.concatenate(bijection, axis=1)
     #%%
-    cg = pc(data=bijection, 
+    cg = pc(data=bijection[:40000, :], 
             alpha=0.05, 
             indep_test='chisq') 
     print(cg.G)
