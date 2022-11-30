@@ -63,17 +63,17 @@ def main():
     # model_name = 'InfoMax'
     model_name = 'GAM'
     
-    scm = 'linear'
-    # scm = 'nonlinear'
+    # dataset = 'loan'; config["dataset"] = 'loan'
+    dataset = 'adult'
     
     """model load"""
     artifact = wandb.use_artifact(
-        'anseunghwan/CausalDisentangled/tabular_model_{}_{}:v{}'.format(
-            model_name, scm, config["num"]), type='model')
+        'anseunghwan/CausalDisentangled/tabular_{}_{}:v{}'.format(
+            model_name, dataset, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
-    assert scm == config["scm"]
+    assert dataset == config["dataset"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -99,17 +99,26 @@ def main():
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=dataset.continuous)
-    pdy.write_png('./assets/loan/dag_train_loan.png')
-    fig = Image.open('./assets/loan/dag_train_loan.png')
+    pdy.write_png('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """
     Causal Adjacency Matrix
-    [Mortgage, Income] -> CCAvg
-    [Experience, Age] -> CCAvg
+    Personal Loan:
+        [Mortgage, Income] -> CCAvg
+        [Experience, Age] -> CCAvg
+    Adult:
+        capital-gain -> ['income', 'educational-num', 'hours-per-week']
+        capital-loss -> ['income', 'educational-num', 'hours-per-week']
     """
     B = torch.zeros(config["node"], config["node"])
-    B[:-1, -1] = 1
+    if config["dataset"] == 'loan':
+        B[:-1, -1] = 1
+    elif config["dataset"] == 'adult':
+        B[:-1, -1] = 1
+    else:
+        raise ValueError('Not supported dataset!')
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -136,7 +145,12 @@ def main():
         
     elif config["model"] == 'GAM':
         """Decoder masking"""
-        mask = [2, 2, 1]
+        if config["dataset"] == 'loan':
+            mask = [2, 2, 1]
+        elif config["dataset"] == 'adult':
+            mask = [1, 1, 3]
+        else:
+            raise ValueError('Not supported dataset!')
         from modules.model import GAM
         model = GAM(B, mask, config, device) 
     
@@ -148,13 +162,13 @@ def main():
     if config["cuda"]:
         model.load_state_dict(
             torch.load(
-                model_dir + '/tabular_model_{}_{}.pth'.format(
-                    config["model"], config["scm"])))
+                model_dir + '/tabular_{}_{}.pth'.format(
+                    config["model"], config["dataset"])))
     else:
         model.load_state_dict(
             torch.load(
-                model_dir + '/tabular_model_{}_{}.pth'.format(
-                    config["model"], config["scm"]), 
+                model_dir + '/tabular_{}_{}.pth'.format(
+                    config["model"], config["dataset"]), 
                         map_location=torch.device('cpu')))
     
     model.eval()
@@ -176,7 +190,7 @@ def main():
     #%%
     """synthetic dataset"""
     torch.manual_seed(config["seed"])
-    randn = torch.randn(4000, config["node"])
+    randn = torch.randn(dataset.__len__(), config["node"])
     with torch.no_grad():
         _, latent, _ = model.transform(randn, log_determinant=False)
         if config["model"] == 'GAM':
@@ -188,6 +202,8 @@ def main():
     cols = [item for sublist in dataset.topology for item in sublist]
     train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
     train_df = train_df[dataset.continuous]
+    if 'income' in dataset.continuous:
+        train_df['income'] = train_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
     
     cg = pc(data=train_df.to_numpy(), 
             alpha=0.05, 
@@ -204,14 +220,16 @@ def main():
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=train_df.columns)
-    pdy.write_png('./assets/loan/dag_recon_train_loan.png')
-    fig = Image.open('./assets/loan/dag_recon_train_loan.png')
+    pdy.write_png('./assets/{}/dag_recon_train_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_recon_train_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
     #%%
     """PC algorithm : synthetic dataset"""
     cols = [item for sublist in dataset.topology for item in sublist]
     sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
     sample_df = sample_df[dataset.continuous]
+    if 'income' in dataset.continuous:
+        sample_df['income'] = sample_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
     
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
@@ -228,30 +246,61 @@ def main():
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
-    pdy.write_png('./assets/loan/dag_recon_sample_loan.png')
-    fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
+    pdy.write_png('./assets/{}/dag_recon_sample_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_recon_sample_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     """Machine Learning Efficacy"""
     import statsmodels.api as sm
     
     # Baseline
-    covariates = [x for x in dataset.train.columns if x != 'CCAvg']
-    linreg = sm.OLS(dataset.train['CCAvg'], dataset.train[covariates]).fit()
-    linreg.summary()
-    pred = linreg.predict(testdataset.test[covariates])
-    rsq_baseline = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
-    print("Baseline R-squared: {:.2f}".format(rsq_baseline))
-    wandb.log({'R^2 (Baseline)': rsq_baseline})
+    if config["dataset"] == 'loan':
+        covariates = [x for x in dataset.train.columns if x != 'CCAvg']
+        linreg = sm.OLS(dataset.train['CCAvg'], dataset.train[covariates]).fit()
+        linreg.summary()
+        pred = linreg.predict(testdataset.test[covariates])
+        rsq_baseline = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
+        
+        print("Baseline R-squared: {:.2f}".format(rsq_baseline))
+        wandb.log({'R^2 (Baseline)': rsq_baseline})
+        
+    elif config["dataset"] == 'adult':
+        from sklearn.metrics import f1_score
+        covariates = [x for x in dataset.train.columns if x != 'income']
+        logistic = sm.Logit(dataset.train['income'], dataset.train[covariates]).fit()
+        logistic.summary()
+        pred = logistic.predict(testdataset.test[covariates])
+        pred = (pred > 0.5).astype(float)
+        f1_baseline = f1_score(testdataset.test['income'], pred)
+        
+        print("Baseline F1: {:.2f}".format(f1_baseline))
+        wandb.log({'F1 (Baseline)': f1_baseline})
+    else:
+        raise ValueError('Not supported dataset!')
     #%%
     # synthetic
-    covariates = [x for x in sample_df.columns if x != 'CCAvg']
-    linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
-    linreg.summary()
-    pred = linreg.predict(testdataset.test[covariates])
-    rsq = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
-    print("{}-{} R-squared: {:.2f}".format(config["model"], config["scm"], rsq))
-    wandb.log({'R^2 (Sample)': rsq})
+    if config["dataset"] == 'loan':
+        covariates = [x for x in sample_df.columns if x != 'CCAvg']
+        linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
+        linreg.summary()
+        pred = linreg.predict(testdataset.test[covariates])
+        rsq = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
+        print("{}-{} R-squared: {:.2f}".format(config["model"], config["dataset"], rsq))
+        wandb.log({'R^2 (Sample)': rsq})
+        
+    elif config["dataset"] == 'adult':
+        from sklearn.metrics import f1_score
+        covariates = [x for x in dataset.train.columns if x != 'income']
+        logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
+        logistic.summary()
+        pred = logistic.predict(testdataset.test[covariates])
+        pred = (pred > 0.5).astype(float)
+        f1 = f1_score(testdataset.test['income'], pred)
+        
+        print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
+        wandb.log({'F1 (Sample)': f1})
+    else:
+        raise ValueError('Not supported dataset!')
     #%%
     wandb.run.finish()
 #%%

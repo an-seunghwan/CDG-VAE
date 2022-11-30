@@ -63,6 +63,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument('--dataset', type=str, default='adult', 
+                        help='Dataset options: adult, loan')
     parser.add_argument('--model', type=str, default='GAM', 
                         help='VAE based model options: VAE, InfoMax, GAM')
 
@@ -125,11 +127,20 @@ def main():
     #%%
     """
     Causal Adjacency Matrix
-    [Mortgage, Income] -> CCAvg
-    [Experience, Age] -> CCAvg
+    Personal Loan:
+        [Mortgage, Income] -> CCAvg
+        [Experience, Age] -> CCAvg
+    Adult:
+        capital-gain -> ['income', 'educational-num', 'hours-per-week']
+        capital-loss -> ['income', 'educational-num', 'hours-per-week']
     """
     B = torch.zeros(config["node"], config["node"])
-    B[:-1, -1] = 1
+    if config["dataset"] == 'loan':
+        B[:-1, -1] = 1
+    elif config["dataset"] == 'adult':
+        B[:-1, -1] = 1
+    else:
+        raise ValueError('Not supported dataset!')
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -156,7 +167,12 @@ def main():
         
     elif config["model"] == 'GAM':
         """Decoder masking"""
-        mask = [2, 2, 1]
+        if config["dataset"] == 'loan':
+            mask = [2, 2, 1]
+        elif config["dataset"] == 'adult':
+            mask = [1, 1, 3]
+        else:
+            raise ValueError('Not supported dataset!')
         from modules.model import GAM
         model = GAM(B, mask, config, device) 
     
@@ -190,11 +206,11 @@ def main():
         wandb.log({x : np.mean(y) for x, y in logs.items()})
     #%%
     """model save"""
-    torch.save(model.state_dict(), './assets/tabular_model_{}_{}.pth'.format(config["model"], config["scm"]))
-    artifact = wandb.Artifact('tabular_model_{}_{}'.format(config["model"], config["scm"]), 
+    torch.save(model.state_dict(), './assets/tabular_{}_{}.pth'.format(config["model"], config["dataset"]))
+    artifact = wandb.Artifact('tabular_{}_{}'.format(config["model"], config["dataset"]), 
                             type='model',
                             metadata=config) # description=""
-    artifact.add_file('./assets/tabular_model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact.add_file('./assets/tabular_{}_{}.pth'.format(config["model"], config["dataset"]))
     artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
