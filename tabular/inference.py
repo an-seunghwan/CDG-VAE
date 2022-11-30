@@ -202,8 +202,9 @@ def main():
     cols = [item for sublist in dataset.topology for item in sublist]
     train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
     train_df = train_df[dataset.continuous]
-    if 'income' in dataset.continuous:
-        train_df['income'] = train_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
+    # if 'income' in dataset.continuous:
+    #     # train_df['income'] = train_df['income'].apply(lambda x: 1 if x > 0 else 0)
+    #     train_df['income'] = (train_df['income'] - train_df['income'].mean(axis=0)) / train_df['income'].std(axis=0)
     
     cg = pc(data=train_df.to_numpy(), 
             alpha=0.05, 
@@ -216,6 +217,7 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     trainSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
+    print('SHD (Train): {}'.format(trainSHD))
     wandb.log({'SHD (Train)': trainSHD})
     
     # visualization
@@ -228,8 +230,9 @@ def main():
     cols = [item for sublist in dataset.topology for item in sublist]
     sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
     sample_df = sample_df[dataset.continuous]
-    if 'income' in dataset.continuous:
-        sample_df['income'] = sample_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
+    # if 'income' in dataset.continuous:
+    #     # sample_df['income'] = sample_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
+    #     train_df['income'] = (train_df['income'] - train_df['income'].mean(axis=0)) / train_df['income'].std(axis=0)
     
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
@@ -242,6 +245,7 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     sampleSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
+    print('SHD (Sample): {}'.format(sampleSHD))
     wandb.log({'SHD (Sample)': sampleSHD})
     
     # visualization
@@ -289,6 +293,9 @@ def main():
         wandb.log({'R^2 (Sample)': rsq})
         
     elif config["dataset"] == 'adult':
+        if 'income' in dataset.continuous:
+            sample_df['income'] = sample_df['income'].apply(lambda x: 1 if x > 0 else 0)
+    
         from sklearn.metrics import f1_score
         covariates = [x for x in dataset.train.columns if x != 'income']
         logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
