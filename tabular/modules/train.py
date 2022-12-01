@@ -33,16 +33,16 @@ def train_VAE(dataset, dataloader, model, config, optimizer, device):
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
-        # if config["dataset"] == 'loan':
-        #     recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
-        # elif config["dataset"] == 'adult':
-        #     x_batch_ = x_batch[:, dataset.flatten_topology]
-        #     recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
-        #     recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
-        #     recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
-        # else:
-        #     raise ValueError('Not supported dataset!')
+        # recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
+        if config["dataset"] == 'loan':
+            recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
+        elif config["dataset"] == 'adult':
+            x_batch_ = x_batch[:, dataset.flatten_topology]
+            recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
+            recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
+            recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
+        else:
+            raise ValueError('Not supported dataset!')
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -108,16 +108,16 @@ def train_InfoMax(dataset, dataloader, model, discriminator, config, optimizer, 
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
-        # if config["dataset"] == 'loan':
-        #     recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
-        # elif config["dataset"] == 'adult':
-        #     x_batch_ = x_batch[:, dataset.flatten_topology]
-        #     recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
-        #     recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
-        #     recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
-        # else:
-        #     raise ValueError('Not supported dataset!')
+        # recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
+        if config["dataset"] == 'loan':
+            recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
+        elif config["dataset"] == 'adult':
+            x_batch_ = x_batch[:, dataset.flatten_topology]
+            recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
+            recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
+            recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
+        else:
+            raise ValueError('Not supported dataset!')
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
@@ -189,16 +189,16 @@ def train_GAM(dataset, dataloader, model, config, optimizer, device):
         loss_ = []
         
         """reconstruction"""
-        recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
-        # if config["dataset"] == 'loan':
-        #     recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
-        # elif config["dataset"] == 'adult':
-        #     x_batch_ = x_batch[:, dataset.flatten_topology]
-        #     recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
-        #     recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
-        #     recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
-        # else:
-        #     raise ValueError('Not supported dataset!')
+        # recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
+        if config["dataset"] == 'loan':
+            recon = 0.5 * torch.pow(xhat - x_batch[:, dataset.flatten_topology], 2).sum(axis=1).mean() 
+        elif config["dataset"] == 'adult':
+            x_batch_ = x_batch[:, dataset.flatten_topology]
+            recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
+            recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
+            recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
+        else:
+            raise ValueError('Not supported dataset!')
         loss_.append(('recon', recon))
         
         """KL-Divergence"""
