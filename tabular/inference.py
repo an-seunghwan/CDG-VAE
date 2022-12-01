@@ -202,7 +202,7 @@ def main():
     train_df = pd.DataFrame(train_recon.numpy(), columns=cols)
     train_df = train_df[dataset.continuous]
     # if 'income' in dataset.continuous:
-    #     # train_df['income'] = train_df['income'].apply(lambda x: 1 if x > 0 else 0)
+    #     train_df['income'] = train_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
     #     train_df['income'] = (train_df['income'] - train_df['income'].mean(axis=0)) / train_df['income'].std(axis=0)
     
     cg = pc(data=train_df.to_numpy(), 
@@ -230,7 +230,7 @@ def main():
     sample_df = pd.DataFrame(sample_recon.numpy(), columns=cols)
     sample_df = sample_df[dataset.continuous]
     # if 'income' in dataset.continuous:
-    #     # sample_df['income'] = sample_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
+    #     sample_df['income'] = sample_df['income'].apply(lambda x: 1 / (1 + np.exp(-x)))
     #     train_df['income'] = (train_df['income'] - train_df['income'].mean(axis=0)) / train_df['income'].std(axis=0)
     
     cg = pc(data=sample_df.to_numpy(), 
@@ -260,18 +260,9 @@ def main():
     if config["dataset"] == 'loan':
         covariates = [x for x in dataset.train.columns if x != 'CCAvg']
         linreg = sm.OLS(dataset.train['CCAvg'], dataset.train[covariates]).fit()
-        # X = sm.add_constant(dataset.train[covariates])
-        # linreg = sm.OLS(dataset.train['CCAvg'], X).fit()
         linreg.summary()
         pred = linreg.predict(testdataset.test[covariates])
-        # X = sm.add_constant(testdataset.test[covariates])
-        # pred = linreg.predict(X)
-        rsq_baseline = (testdataset.test['CCAvg'] - pred).pow(2).sum()
-        rsq_baseline /= (testdataset.test['CCAvg']).pow(2).sum()
-        rsq_baseline = 1 - rsq_baseline
-        # rsq_baseline = (testdataset.test['CCAvg'] - pred).pow(2).sum()
-        # rsq_baseline /= (testdataset.test['CCAvg'] - testdataset.test['CCAvg'].mean()).pow(2).sum()
-        # rsq_baseline = 1 - rsq_baseline
+        rsq_baseline = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
         
         print("Baseline R-squared: {:.2f}".format(rsq_baseline))
         wandb.log({'R^2 (Baseline)': rsq_baseline})
@@ -294,26 +285,16 @@ def main():
     if config["dataset"] == 'loan':
         covariates = [x for x in sample_df.columns if x != 'CCAvg']
         linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
-        # X = sm.add_constant(sample_df[covariates])
-        # linreg = sm.OLS(sample_df['CCAvg'], X).fit()
         linreg.summary()
         pred = linreg.predict(testdataset.test[covariates])
-        # X = sm.add_constant(testdataset.test[covariates])
-        # pred = linreg.predict(X)
-        rsq = (testdataset.test['CCAvg'] - pred).pow(2).sum()
-        rsq /= (testdataset.test['CCAvg']).pow(2).sum()
-        rsq = 1 - rsq
-        # rsq = (testdataset.test['CCAvg'] - pred).pow(2).sum()
-        # rsq /= (testdataset.test['CCAvg'] - testdataset.test['CCAvg'].mean()).pow(2).sum()
-        # rsq = 1 - rsq
-        
+        rsq = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
         print("{}-{} R-squared: {:.2f}".format(config["model"], config["dataset"], rsq))
         wandb.log({'R^2 (Sample)': rsq})
         
     elif config["dataset"] == 'adult':
         if 'income' in dataset.continuous:
             sample_df['income'] = sample_df['income'].apply(lambda x: 1 if x > 0 else 0)
-    
+            
         from sklearn.metrics import f1_score
         covariates = [x for x in dataset.train.columns if x != 'income']
         logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
