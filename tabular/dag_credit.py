@@ -27,9 +27,9 @@ def main():
     covariates = [
         'TARGET', 
         'AMT_ANNUITY', 
-        'DAYS_BIRTH', 
-        'DAYS_EMPLOYED',
         'AMT_CREDIT', 
+        'DAYS_EMPLOYED',
+        'DAYS_BIRTH', 
         # 'AMT_INCOME_TOTAL', 
         # 'AMT_GOODS_PRICE',
         # 'REGION_POPULATION_RELATIVE', 
@@ -71,7 +71,7 @@ def main():
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    cg = pc(data=df_.to_numpy(), 
+    cg = pc(data=df_.to_numpy()[:30000, :], 
             alpha=0.05, 
             indep_test='fisherz') 
     print(cg.G)
@@ -132,7 +132,7 @@ def main():
             bijection.append(np.array([bijection_tmp]).T)
     bijection = np.concatenate(bijection, axis=1)
     #%%
-    cg = pc(data=bijection, 
+    cg = pc(data=bijection[:30000, :], 
             alpha=0.05, 
             indep_test='fisherz') 
     print(cg.G)

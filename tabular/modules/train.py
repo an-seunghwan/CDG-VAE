@@ -41,6 +41,9 @@ def train_VAE(dataset, dataloader, model, config, optimizer, device):
             recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
             recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
             recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
+        elif config["dataset"] == 'credit':
+            recon = F.binary_cross_entropy_with_logits(xhat[:, [0]], x_batch[:, [0]]) # TARGET
+            recon += 0.5 * torch.pow(xhat[:, 1:] - x_batch[:, 1:], 2).sum(axis=1).mean() 
         else:
             raise ValueError('Not supported dataset!')
         loss_.append(('recon', recon))
@@ -116,6 +119,9 @@ def train_InfoMax(dataset, dataloader, model, discriminator, config, optimizer, 
             recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
             recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
             recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
+        elif config["dataset"] == 'credit':
+            recon = F.binary_cross_entropy_with_logits(xhat[:, [0]], x_batch[:, [0]]) # TARGET
+            recon += 0.5 * torch.pow(xhat[:, 1:] - x_batch[:, 1:], 2).sum(axis=1).mean() 
         else:
             raise ValueError('Not supported dataset!')
         loss_.append(('recon', recon))
@@ -197,6 +203,9 @@ def train_GAM(dataset, dataloader, model, config, optimizer, device):
             recon = 0.5 * torch.pow(xhat[:, :2] - x_batch_[:, :2], 2).sum(axis=1).mean() 
             recon += 0.5 * torch.pow(xhat[:, 3:] - x_batch_[:, 3:], 2).sum(axis=1).mean() 
             recon += F.binary_cross_entropy_with_logits(xhat[:, [2]], x_batch_[:, [2]]) # income
+        elif config["dataset"] == 'credit':
+            recon = F.binary_cross_entropy_with_logits(xhat[:, [0]], x_batch[:, [0]]) # TARGET
+            recon += 0.5 * torch.pow(xhat[:, 1:] - x_batch[:, 1:], 2).sum(axis=1).mean() 
         else:
             raise ValueError('Not supported dataset!')
         loss_.append(('recon', recon))
