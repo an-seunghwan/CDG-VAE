@@ -21,11 +21,6 @@ from modules.simulation import (
     is_dag,
 )
 
-from modules.datasets import (
-    TabularDataset, 
-    TestTabularDataset,
-)
-
 from modules.train import (
     train_VAE,
     train_InfoMax,
@@ -63,8 +58,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--dataset', type=str, default='adult', 
-                        help='Dataset options: adult, loan')
+    parser.add_argument('--dataset', type=str, default='covtype', 
+                        help='Dataset options: loan, adult, covtype')
     parser.add_argument('--model', type=str, default='GAM', 
                         help='VAE based model options: VAE, InfoMax, GAM')
 
@@ -100,7 +95,7 @@ def get_args(debug):
     # loss coefficients
     parser.add_argument('--beta', default=0.01, type=float,
                         help='observation noise')
-    parser.add_argument('--lambda', default=5, type=float,
+    parser.add_argument('--lambda', default=10, type=float,
                         help='weight of label alignment loss')
     parser.add_argument('--gamma', default=1, type=float, # InfoMax
                         help='weight of f-divergence (lower bound of information)')
@@ -122,6 +117,11 @@ def main():
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
     #%%
+    import importlib
+    dataset_module = importlib.import_module('modules.{}_datasets'.format(config["dataset"]))
+    TabularDataset = dataset_module.TabularDataset
+    TestTabularDataset = dataset_module.TestTabularDataset
+    
     dataset = TabularDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     #%%
@@ -131,14 +131,33 @@ def main():
         [Mortgage, Income] -> CCAvg
         [Experience, Age] -> CCAvg
     Adult:
-        capital-gain -> ['income', 'educational-num', 'hours-per-week']
-        capital-loss -> ['income', 'educational-num', 'hours-per-week']
+        capital-gain -> [income, educational-num, hours-per-week]
+        capital-loss -> [income, educational-num, hours-per-week]
+    Forest Cover Type Prediction:
     """
-    B = torch.zeros(config["node"], config["node"])
     if config["dataset"] == 'loan':
+        config["node"] = 3
+        B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
+        config["input_dim"] = 5
+    
     elif config["dataset"] == 'adult':
+        config["node"] = 3
+        B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
+        config["input_dim"] = 5
+    
+    elif config["dataset"] == 'covtype':
+        config["node"] = 6
+        B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1, 1, 1, 1]
+        B[[0, 3, 4, 5], 1] = 1
+        B[[3, 4, 5], 2] = 1
+        B[[0, 5], 3] = 1
+        config["input_dim"] = 8
+        
     else:
         raise ValueError('Not supported dataset!')
     
@@ -171,6 +190,8 @@ def main():
             mask = [2, 2, 1]
         elif config["dataset"] == 'adult':
             mask = [1, 1, 3]
+        elif config["dataset"] == 'covtype':
+            mask = [1, 1, 2, 1, 1, 1 + 7]
         else:
             raise ValueError('Not supported dataset!')
         from modules.model import GAM
@@ -215,6 +236,7 @@ def main():
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
     #%%
+    wandb.config.update(config)
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
