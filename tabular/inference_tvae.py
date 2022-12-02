@@ -22,8 +22,6 @@ from modules.simulation import (
 )
 
 from modules.model import TVAE
-
-from modules.datasets import TabularDataset2
 #%%
 import sys
 import subprocess
@@ -46,7 +44,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=0, 
+    parser.add_argument('--num', type=int, default=72, 
                         help='model version')
 
     if debug:
@@ -60,17 +58,18 @@ def main():
     
     model_name = 'TVAE'
     
-    scm = 'linear'
-    # scm = 'nonlinear'
+    dataset = 'loan'
+    # dataset = 'adult'
+    # dataset = 'covtype'
     
     """model load"""
     artifact = wandb.use_artifact(
-        'anseunghwan/CausalDisentangled/tabular_model_{}_{}:v{}'.format(
-            model_name, scm, config["num"]), type='model')
+        'anseunghwan/CausalDisentangled/tabular_{}_{}:v{}'.format(
+            model_name, dataset, config["num"]), type='model')
     for key, item in artifact.metadata.items():
         config[key] = item
     assert model_name == config["model"]
-    assert scm == config["scm"]
+    assert dataset == config["dataset"]
     model_dir = artifact.download()
     
     config["cuda"] = torch.cuda.is_available()
@@ -82,16 +81,47 @@ def main():
     if config["cuda"]:
         torch.cuda.manual_seed(config["seed"])
     #%%
+    import importlib
+    dataset_module = importlib.import_module('modules.{}_datasets'.format(config["dataset"]))
+    TabularDataset2 = dataset_module.TabularDataset2
+    
     dataset = TabularDataset2(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    
+    config["input_dim"] = dataset.transformer.output_dimensions
     #%%
     """
     Causal Adjacency Matrix
-    [Mortgage, Income] -> CCAvg
-    [Experience, Age] -> CCAvg
+    Personal Loan:
+        [Mortgage, Income] -> CCAvg
+        [Experience, Age] -> CCAvg
+    Adult:
+        capital-gain -> [income, educational-num, hours-per-week]
+        capital-loss -> [income, educational-num, hours-per-week]
+    Forest Cover Type Prediction:
     """
-    B = torch.zeros(config["node"], config["node"])
-    B[:-1, -1] = 1
+    if config["dataset"] == 'loan':
+        config["node"] = 3
+        B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1]
+        B[:-1, -1] = 1
+    
+    elif config["dataset"] == 'adult':
+        config["node"] = 3
+        B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1]
+        B[:-1, -1] = 1
+    
+    elif config["dataset"] == 'covtype':
+        config["node"] = 6
+        B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1, 1, 1, 1]
+        B[[0, 3, 4, 5], 1] = 1
+        B[[3, 4, 5], 2] = 1
+        B[[0, 5], 3] = 1
+        
+    else:
+        raise ValueError('Not supported dataset!')
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -104,8 +134,19 @@ def main():
     decoder_dims = []
     for l in dataset.transformer.output_info_list:
         decoder_dims.append(sum([x.dim for x in l]))
-    mask_ = [0, 2, 2, 1]
-    mask_ = np.cumsum(mask_)
+    
+    if config["dataset"] == 'loan':
+        mask_ = [0, 2, 2, 1]
+        mask_ = np.cumsum(mask_)
+    elif config["dataset"] == 'adult':
+        mask_ = [0, 1, 1, 3]
+        mask_ = np.cumsum(mask_)
+    elif config["dataset"] == 'covtype':
+        mask_ = [0, 1, 1, 2, 1, 1, 1 + 7]
+        mask_ = np.cumsum(mask_)
+    else:
+        raise ValueError('Not supported dataset!')
+    
     mask = []
     for j in range(len(mask_) - 1):
         mask.append(sum(decoder_dims[mask_[j]:mask_[j+1]]))
@@ -113,31 +154,49 @@ def main():
     model = TVAE(B, mask, config, device).to(device)
     
     if config["cuda"]:
+        model_name = [x for x in os.listdir(model_dir) if x.endswith('pth')][0]
         model.load_state_dict(
             torch.load(
-                model_dir + '/tabular_model_{}_{}.pth'.format(
-                    config["model"], config["scm"])))
+                model_dir + '/' + model_name))
     else:
+        model_name = [x for x in os.listdir(model_dir) if x.endswith('pth')][0]
         model.load_state_dict(
             torch.load(
-                model_dir + '/tabular_model_{}_{}.pth'.format(
-                    config["model"], config["scm"]), 
-                        map_location=torch.device('cpu')))
+                model_dir + '/' + model_name, map_location=torch.device('cpu')))
     
     model.eval()
     #%%
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
-    df = df.sample(frac=1, random_state=1).reset_index(drop=True)
-    df = df.drop(columns=['ID'])
-    continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
-    df = df[continuous]
-    
-    df_ = (df - df.mean(axis=0)) / df.std(axis=0)
-    train = df_.iloc[:4000]
-    test = df_.iloc[4000:]
+    if config["dataset"] == 'loan':
+        df = pd.read_csv('./data/Bank_Personal_Loan_Modelling.csv')
+        df = df.sample(frac=1, random_state=1).reset_index(drop=True)
+        df = df.drop(columns=['ID'])
+        continuous = ['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']
+        df = df[continuous]
+        
+        df_ = (df - df.mean(axis=0)) / df.std(axis=0)
+        train = df_.iloc[:4000]
+        test = df_.iloc[4000:]
+        
+    elif config["dataset"] == 'adult':
+        df = pd.read_csv('./data/adult.csv')
+        df = df.sample(frac=1, random_state=1).reset_index(drop=True)
+        df = df[(df == '?').sum(axis=1) == 0]
+        df['income'] = df['income'].map({'<=50K': 0, '>50K': 1, '<=50K.': 0, '>50K.': 1})
+        df = df[dataset.continuous]
+        
+        scaling = [x for x in dataset.continuous if x != 'income']
+        df_ = df.copy()
+        df_[scaling] = (df[scaling] - df[scaling].mean(axis=0)) / df[scaling].std(axis=0)
+        train = df_.iloc[:40000]
+        test = df_.iloc[40000:]
+        
+    # elif config["dataset"] == 'covtype':
+        
+    else:
+        raise ValueError('Not supported dataset!')
     
     cg = pc(data=train.to_numpy(), 
             alpha=0.05, 
@@ -147,8 +206,8 @@ def main():
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=df.columns)
-    pdy.write_png('./assets/loan/dag_train_loan.png')
-    fig = Image.open('./assets/loan/dag_train_loan.png')
+    pdy.write_png('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """train dataset representation"""
@@ -165,9 +224,13 @@ def main():
     train_recon = dataset.transformer.inverse_transform(train_recon, model.sigma.detach().cpu().numpy())
     #%%
     """PC algorithm : train dataset representation"""
-    train_recon = (train_recon - train_recon.mean(axis=0)) / train_recon.std(axis=0)
-    train_recon = train_recon[['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']]
-    cg = pc(data=train_recon.to_numpy(), 
+    try: 
+        train_df = pd.DataFrame(train_recon.to_numpy(), columns=dataset.flatten_topology)
+    except:
+        cols = [item for sublist in dataset.topology for item in sublist]
+        train_df = pd.DataFrame(train_recon.to_numpy(), columns=cols)
+    train_df = train_df[dataset.continuous]
+    cg = pc(data=train_df.to_numpy(), 
             alpha=0.05, 
             indep_test='fisherz') 
     print(cg.G)
@@ -178,12 +241,13 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     trainSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
+    print('SHD (Train): {}'.format(trainSHD))
     wandb.log({'SHD (Train)': trainSHD})
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=train_recon.columns)
-    pdy.write_png('./assets/loan/dag_recon_train_loan.png')
-    fig = Image.open('./assets/loan/dag_recon_train_loan.png')
+    pdy.write_png('./assets/{}/dag_recon_train_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_recon_train_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Reconstructed DAG (Train)': wandb.Image(fig)})
     #%%
     """synthetic dataset"""
@@ -204,8 +268,12 @@ def main():
     sample_df = dataset.transformer.inverse_transform(data, model.sigma.detach().cpu().numpy())
     #%%
     """PC algorithm : synthetic dataset"""
-    sample_df = (sample_df - sample_df.mean(axis=0)) / sample_df.std(axis=0)
-    sample_df = sample_df[['CCAvg', 'Mortgage', 'Income', 'Experience', 'Age']]
+    try:
+        sample_df = pd.DataFrame(sample_df.to_numpy(), columns=dataset.flatten_topology)
+    except:
+        cols = [item for sublist in dataset.topology for item in sublist]
+        sample_df = pd.DataFrame(sample_df.to_numpy(), columns=cols)
+    sample_df = sample_df[dataset.continuous]
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
             indep_test='fisherz') 
@@ -217,34 +285,93 @@ def main():
     flag = np.triu(trainG)[nonzero_idx] == np.triu(cg.G.graph)[nonzero_idx]
     nonzero_idx = (nonzero_idx[1][flag], nonzero_idx[0][flag])
     sampleSHD += (np.tril(trainG)[nonzero_idx] != np.tril(cg.G.graph)[nonzero_idx]).sum()
+    print('SHD (Sample): {}'.format(sampleSHD))
     wandb.log({'SHD (Sample)': sampleSHD})
     
     # visualization
     pdy = GraphUtils.to_pydot(cg.G, labels=sample_df.columns)
-    pdy.write_png('./assets/loan/dag_recon_sample_loan.png')
-    fig = Image.open('./assets/loan/dag_recon_sample_loan.png')
+    pdy.write_png('./assets/{}/dag_recon_sample_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_recon_sample_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     """Machine Learning Efficacy"""
     import statsmodels.api as sm
     
     # Baseline
-    covariates = [x for x in train.columns if x != 'CCAvg']
-    linreg = sm.OLS(train['CCAvg'], train[covariates]).fit()
-    linreg.summary()
-    pred = linreg.predict(test[covariates])
-    rsq_baseline = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
-    print("Baseline R-squared: {:.2f}".format(rsq_baseline))
-    wandb.log({'R^2 (Baseline)': rsq_baseline})
+    if config["dataset"] == 'loan':
+        covariates = [x for x in train.columns if x != 'CCAvg']
+        linreg = sm.OLS(train['CCAvg'], train[covariates]).fit()
+        linreg.summary()
+        pred = linreg.predict(test[covariates])
+        rsq_baseline = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
+        
+        print("Baseline R-squared: {:.2f}".format(rsq_baseline))
+        wandb.log({'R^2 (Baseline)': rsq_baseline})
+        
+    elif config["dataset"] == 'adult':
+        from sklearn.metrics import f1_score
+        covariates = [x for x in train.columns if x != 'income']
+        logistic = sm.Logit(train['income'], train[covariates]).fit()
+        logistic.summary()
+        pred = logistic.predict(test[covariates])
+        pred = (pred > 0.5).astype(float)
+        f1_baseline = f1_score(test['income'], pred)
+        
+        print("Baseline F1: {:.2f}".format(f1_baseline))
+        wandb.log({'F1 (Baseline)': f1_baseline})
+    
+    elif config["dataset"] == 'covtype':
+        from sklearn.ensemble import RandomForestClassifier
+        covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
+        clf = RandomForestClassifier(random_state=0)
+        clf.fit(dataset.train[covariates], dataset.train['Cover_Type'])
+        acc_baseline = clf.score(testdataset.test[covariates], testdataset.test['Cover_Type'])
+        
+        print("Baseline Accuracy: {:.2f}%".format(acc_baseline * 100))
+        wandb.log({'Acc (Baseline)': acc_baseline})
+    
+    else:
+        raise ValueError('Not supported dataset!')
     #%%
-    # Train
-    covariates = [x for x in sample_df.columns if x != 'CCAvg']
-    linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
-    linreg.summary()
-    pred = linreg.predict(test[covariates])
-    rsq = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
-    print("CDG-TVAE R-squared: {:.2f}".format(rsq))
-    wandb.log({'R^2 (Sample)': rsq})
+    # synthetic
+    if config["dataset"] == 'loan':
+        covariates = [x for x in sample_df.columns if x != 'CCAvg']
+        sample_df[covariates] = (sample_df[covariates] - sample_df[covariates].mean(axis=0)) / sample_df[covariates].std(axis=0)
+        
+        covariates = [x for x in sample_df.columns if x != 'CCAvg']
+        linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
+        linreg.summary()
+        pred = linreg.predict(test[covariates])
+        rsq = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
+        print("{}-{} R-squared: {:.2f}".format(config["model"], config["dataset"], rsq))
+        wandb.log({'R^2 (Sample)': rsq})
+        
+    elif config["dataset"] == 'adult':
+        from sklearn.metrics import f1_score
+        covariates = [x for x in sample_df.columns if x != 'income']
+        sample_df[covariates] = (sample_df[covariates] - sample_df[covariates].mean(axis=0)) / sample_df[covariates].std(axis=0)
+        
+        logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
+        logistic.summary()
+        pred = logistic.predict(test[covariates])
+        pred = (pred > 0.5).astype(float)
+        f1 = f1_score(test['income'], pred)
+        
+        print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
+        wandb.log({'F1 (Sample)': f1})
+    
+    elif config["dataset"] == 'covtype':
+        from sklearn.ensemble import RandomForestClassifier
+        covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
+        clf = RandomForestClassifier(random_state=0)
+        clf.fit(sample_df[covariates], sample_df['Cover_Type'])
+        acc = clf.score(testdataset.test[covariates], testdataset.test['Cover_Type'])
+        
+        print("{}-{} Accuracy: {:.2f}%".format(config["model"], config["dataset"], acc * 100))
+        wandb.log({'Acc (Sample)': acc})
+    
+    else:
+        raise ValueError('Not supported dataset!')
     #%%
     wandb.run.finish()
 #%%

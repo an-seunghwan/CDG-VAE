@@ -24,8 +24,6 @@ from modules.simulation import (
 from modules.model import TVAE
 
 from modules.train import train_TVAE
-
-from modules.datasets import TabularDataset2
 #%%
 import sys
 import subprocess
@@ -58,6 +56,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
+    parser.add_argument('--dataset', type=str, default='adult', 
+                        help='Dataset options: loan, adult, covtype')
     parser.add_argument('--model', type=str, default='TVAE', 
                         help='VAE based model option: TVAE')
 
@@ -112,6 +112,10 @@ def main():
         torch.cuda.manual_seed(config["seed"])
     #%%
     """dataset"""
+    import importlib
+    dataset_module = importlib.import_module('modules.{}_datasets'.format(config["dataset"]))
+    TabularDataset2 = dataset_module.TabularDataset2
+    
     dataset = TabularDataset2(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
@@ -119,11 +123,30 @@ def main():
     #%%
     """
     Causal Adjacency Matrix
-    [Mortgage, Income] -> CCAvg
-    [Experience, Age] -> CCAvg
+    Personal Loan:
+        [Mortgage, Income] -> CCAvg
+        [Experience, Age] -> CCAvg
+    Adult:
+        capital-gain -> [income, educational-num, hours-per-week]
+        capital-loss -> [income, educational-num, hours-per-week]
+    Forest Cover Type Prediction:
     """
-    B = torch.zeros(config["node"], config["node"])
-    B[:-1, -1] = 1
+    if config["dataset"] == 'loan':
+        B = torch.zeros(config["node"], config["node"])
+        B[:-1, -1] = 1
+    
+    elif config["dataset"] == 'adult':
+        B = torch.zeros(config["node"], config["node"])
+        B[:-1, -1] = 1
+    
+    elif config["dataset"] == 'covtype':
+        B = torch.zeros(config["node"], config["node"])
+        B[[0, 3, 4, 5], 1] = 1
+        B[[3, 4, 5], 2] = 1
+        B[[0, 5], 3] = 1
+        
+    else:
+        raise ValueError('Not supported dataset!')
     
     """adjacency matrix scaling"""
     if config["adjacency_scaling"]:
@@ -136,8 +159,19 @@ def main():
     decoder_dims = []
     for l in dataset.transformer.output_info_list:
         decoder_dims.append(sum([x.dim for x in l]))
-    mask_ = [0, 2, 2, 1]
-    mask_ = np.cumsum(mask_)
+    
+    if config["dataset"] == 'loan':
+        mask_ = [0, 2, 2, 1]
+        mask_ = np.cumsum(mask_)
+    elif config["dataset"] == 'adult':
+        mask_ = [0, 1, 1, 3]
+        mask_ = np.cumsum(mask_)
+    elif config["dataset"] == 'covtype':
+        mask_ = [0, 1, 1, 2, 1, 1, 1 + 7]
+        mask_ = np.cumsum(mask_)
+    else:
+        raise ValueError('Not supported dataset!')
+    
     mask = []
     for j in range(len(mask_) - 1):
         mask.append(sum(decoder_dims[mask_[j]:mask_[j+1]]))
@@ -163,11 +197,11 @@ def main():
         wandb.log({x : np.mean(y) for x, y in logs.items()})
     #%%
     """model save"""
-    torch.save(model.state_dict(), './assets/tabular_model_{}_{}.pth'.format(config["model"], config["scm"]))
-    artifact = wandb.Artifact('tabular_model_{}_{}'.format(config["model"], config["scm"]), 
+    torch.save(model.state_dict(), './assets/tabular_{}_{}.pth'.format(config["model"], config["dataset"]))
+    artifact = wandb.Artifact('tabular_{}_{}'.format(config["model"], config["dataset"]), 
                             type='model',
                             metadata=config) # description=""
-    artifact.add_file('./assets/tabular_model_{}_{}.pth'.format(config["model"], config["scm"]))
+    artifact.add_file('./assets/tabular_{}_{}.pth'.format(config["model"], config["dataset"]))
     artifact.add_file('./main.py')
     artifact.add_file('./modules/model.py')
     wandb.log_artifact(artifact)
