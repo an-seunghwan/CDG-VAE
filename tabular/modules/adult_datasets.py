@@ -147,7 +147,8 @@ class TabularDataset2(Dataset):
         
         self.continuous = ['income', 'educational-num', 'capital-gain', 'capital-loss', 'hours-per-week']
         self.topology = [['capital-gain'], ['capital-loss'], ['income', 'educational-num', 'hours-per-week']]
-        self.flatten_topology =  [self.continuous.index(item) for sublist in self.topology for item in sublist]
+        self.flatten_topology =  [item for sublist in self.topology for item in sublist]
+        # self.flatten_topology =  [self.continuous.index(item) for sublist in self.topology for item in sublist]
         df = df[self.continuous]
         
         min_ = df.min(axis=0)
@@ -172,7 +173,7 @@ class TabularDataset2(Dataset):
         bijection = np.concatenate(bijection, axis=1)
         self.label = bijection[:40000, ]
         
-        df = df[self.continuous].iloc[:4000]
+        df = df[self.flatten_topology].iloc[:4000]
         
         transformer = DataTransformer()
         transformer.fit(df, discrete_columns=['income'])
