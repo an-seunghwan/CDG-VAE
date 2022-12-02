@@ -20,7 +20,8 @@ def main():
         os.makedirs('./assets/covtype')
         
     base = pd.read_csv('./data/covtype.csv')
-    base = base.sample(frac=1, random_state=1).reset_index(drop=True)
+    base = base.sample(frac=1, random_state=5).reset_index(drop=True)
+    print(base.shape)
     base.head()
     #%%
     covariates = [
@@ -50,7 +51,7 @@ def main():
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    cg = pc(data=df_.to_numpy(), 
+    cg = pc(data=df_.to_numpy()[2000:, :], 
             alpha=0.05, 
             indep_test='fisherz') 
     print(cg.G)
@@ -117,7 +118,7 @@ def main():
             bijection.append(np.array([bijection_tmp]).T)
     bijection = np.concatenate(bijection, axis=1)
     #%%
-    cg = pc(data=bijection, 
+    cg = pc(data=bijection[2000:, :], 
             alpha=0.05, 
             indep_test='fisherz') 
     print(cg.G)
