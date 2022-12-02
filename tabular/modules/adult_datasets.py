@@ -175,7 +175,7 @@ class TabularDataset2(Dataset):
         df = df[self.continuous].iloc[:4000]
         
         transformer = DataTransformer()
-        transformer.fit(df)
+        transformer.fit(df, discrete_columns=['income'])
         train_data = transformer.transform(df)
         self.transformer = transformer
             
