@@ -25,25 +25,28 @@ def main():
     #%%
     # https://chocoffee20.tistory.com/6
     covariates = [
-        'TARGET', 
-        'AMT_ANNUITY', 
-        'AMT_CREDIT', 
+        # 'TARGET', 
         'DAYS_EMPLOYED',
         'DAYS_BIRTH', 
-        # 'AMT_INCOME_TOTAL', 
-        # 'AMT_GOODS_PRICE',
+        'AMT_ANNUITY', 
+        'AMT_CREDIT', 
+        'AMT_INCOME_TOTAL', 
+        'AMT_GOODS_PRICE',
         # 'REGION_POPULATION_RELATIVE', 
         ]
     df = base[covariates]
     df = df.dropna(axis=0)
-    # imbalanced class
-    np.random.seed(1)
-    idx = np.random.choice(
-        range((df['TARGET'] == 0).sum()), 
-        (df['TARGET'] == 1).sum() * 1, 
-        replace=False)
-    df = pd.concat([df.iloc[idx], df[df['TARGET'] == 1]], axis=0).reset_index().drop(columns=['index'])
-    df = df.sample(frac=1, random_state=1).reset_index(drop=True)
+    
+    # # imbalanced class
+    # np.random.seed(1)
+    # idx = np.random.choice(
+    #     range((df['TARGET'] == 0).sum()), 
+    #     (df['TARGET'] == 1).sum() * 1, 
+    #     replace=False)
+    # df = pd.concat([df.iloc[idx], df[df['TARGET'] == 1]], axis=0).reset_index().drop(columns=['index'])
+    # df = df.sample(frac=1, random_state=1).reset_index(drop=True)
+    
+    df = df.sample(frac=0.1, random_state=1).reset_index(drop=True)
     df.describe()
     #%%    
     """remove outlier"""
@@ -60,6 +63,7 @@ def main():
         condition = df[col] < q1 - 1.5 * iqr
         idx = df[condition].index
         df.drop(idx, inplace=True)
+    print(df.shape)
     df.describe()
     #%%
     scaling = [x for x in covariates if x != 'TARGET']
@@ -71,7 +75,7 @@ def main():
     from causallearn.search.ConstraintBased.PC import pc
     from causallearn.utils.GraphUtils import GraphUtils
     
-    cg = pc(data=df_.to_numpy()[:30000, :], 
+    cg = pc(data=df_.to_numpy(), 
             alpha=0.05, 
             indep_test='fisherz') 
     print(cg.G)
