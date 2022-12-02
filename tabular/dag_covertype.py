@@ -29,9 +29,6 @@ def main():
         'Vertical_Distance_To_Hydrology',
         'Horizontal_Distance_To_Roadways',
         'Horizontal_Distance_To_Fire_Points',
-        # 'Hillshade_9am',
-        # 'Hillshade_Noon',
-        # 'Hillshade_3pm',
         'Elevation', 
         'Aspect', 
         'Slope', 
@@ -88,9 +85,6 @@ def main():
         ['Horizontal_Distance_To_Hydrology'], 
         ['Vertical_Distance_To_Hydrology'],
         ['Horizontal_Distance_To_Roadways', 'Horizontal_Distance_To_Fire_Points'],
-        # 'Hillshade_9am',
-        # 'Hillshade_Noon',
-        # 'Hillshade_3pm',
         ['Elevation'], 
         ['Aspect'], 
         ['Slope', 'Cover_Type'],
@@ -114,8 +108,8 @@ def main():
     print(cg.G)
     
     # visualization
-    labels = ['u{}'.format(i+1) if len(topology[i]) != 1 else topology[i][0] for i in range(len(topology))]
-    pdy = GraphUtils.to_pydot(cg.G, labels=labels)
+    # labels = ['u{}'.format(i+1) if len(topology[i]) != 1 else topology[i][0] for i in range(len(topology))]
+    pdy = GraphUtils.to_pydot(cg.G, labels=['u1', 'u5', 'u6', 'u4', 'u2', 'u3'])
     pdy.write_png('./assets/covtype/dag_bijection_covtype.png')
     fig = Image.open('./assets/covtype/dag_bijection_covtype.png')
     fig.show()
