@@ -58,7 +58,7 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--dataset', type=str, default='covtype', 
+    parser.add_argument('--dataset', type=str, default='loan', 
                         help='Dataset options: loan, adult, covtype')
     parser.add_argument('--model', type=str, default='GAM', 
                         help='VAE based model options: VAE, InfoMax, GAM')
