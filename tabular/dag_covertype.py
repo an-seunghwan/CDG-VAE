@@ -106,16 +106,6 @@ def main():
             for x, y in df_tmp:
                 bijection_tmp.append(interleave_float(x, y))
             bijection.append(np.array([bijection_tmp]).T)
-        if len(topology[i]) == 3:
-            df_tmp = df[topology[i]].to_numpy()
-            bijection_tmp = []
-            for x, y in df_tmp[:, :2]:
-                bijection_tmp.append(interleave_float(x, y))
-            tmp = np.concatenate([np.array([bijection_tmp]).T, df_tmp[:, [2]]], axis=1)
-            bijection_tmp = []
-            for x, y in tmp:
-                bijection_tmp.append(interleave_float(x, y))
-            bijection.append(np.array([bijection_tmp]).T)
     bijection = np.concatenate(bijection, axis=1)
     #%%
     cg = pc(data=bijection[2000:, :], 
