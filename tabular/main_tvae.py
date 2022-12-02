@@ -56,7 +56,7 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--dataset', type=str, default='adult', 
+    parser.add_argument('--dataset', type=str, default='loan', 
                         help='Dataset options: loan, adult, covtype')
     parser.add_argument('--model', type=str, default='TVAE', 
                         help='VAE based model option: TVAE')
@@ -132,15 +132,21 @@ def main():
     Forest Cover Type Prediction:
     """
     if config["dataset"] == 'loan':
+        config["node"] = 3
         B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
     
     elif config["dataset"] == 'adult':
+        config["node"] = 3
         B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
     
     elif config["dataset"] == 'covtype':
+        config["node"] = 6
         B = torch.zeros(config["node"], config["node"])
+        config["factor"] = [1, 1, 1, 1, 1, 1]
         B[[0, 3, 4, 5], 1] = 1
         B[[3, 4, 5], 2] = 1
         B[[0, 5], 3] = 1

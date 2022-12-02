@@ -175,6 +175,7 @@ class TabularDataset2(Dataset):
             ['Aspect'], 
             ['Slope', 'Cover_Type'],
         ]
+        self.flatten_topology = [item for sublist in self.topology for item in sublist]
         df = base[self.continuous]
         df = df.dropna(axis=0)
         
@@ -196,10 +197,10 @@ class TabularDataset2(Dataset):
         bijection = np.concatenate(bijection, axis=1)
         self.label = bijection[2000:, ]
         
-        df = df.iloc[2000:]
+        df = df[self.flatten_topology].iloc[2000:]
         
         transformer = DataTransformer()
-        transformer.fit(df)
+        transformer.fit(df, discrete_columns=['Cover_Type'])
         train_data = transformer.transform(df)
         self.transformer = transformer
             
