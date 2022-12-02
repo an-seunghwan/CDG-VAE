@@ -107,11 +107,22 @@ class VAE(nn.Module):
         self.device = device
         
         """encoder"""
-        self.encoder = nn.Sequential(
-            nn.Linear(config["input_dim"], 4),
-            nn.ELU(),
-            nn.Linear(4, config["node"] * 2),
-        ).to(device)
+        if config["dataset"] == 'covtype':
+            self.encoder = nn.Sequential(
+                nn.Linear(config["input_dim"], 4),
+                nn.ELU(),
+                nn.Linear(4, 4),
+                nn.ELU(),
+                nn.Linear(4, 4),
+                nn.ELU(),
+                nn.Linear(4, config["node"] * 2),
+            ).to(device)
+        else:
+            self.encoder = nn.Sequential(
+                nn.Linear(config["input_dim"], 4),
+                nn.ELU(),
+                nn.Linear(4, config["node"] * 2),
+            ).to(device)
         
         """Causal Adjacency Matrix"""
         self.B = B.to(device) 
@@ -129,11 +140,22 @@ class VAE(nn.Module):
             raise ValueError('Not supported SCM!')
         
         """decoder"""
-        self.decoder = nn.Sequential(
-            nn.Linear(config["node"], 4),
-            nn.ELU(),
-            nn.Linear(4, config["input_dim"]),
-        ).to(device)
+        if config["dataset"] == 'covtype':
+            self.decoder = nn.Sequential(
+                nn.Linear(config["node"], 4),
+                nn.ELU(),
+                nn.Linear(4, config["input_dim"]),
+            ).to(device)
+        else:
+            self.decoder = nn.Sequential(
+                nn.Linear(config["node"], 8),
+                nn.ELU(),
+                nn.Linear(8, 8),
+                nn.ELU(),
+                nn.Linear(8, 16),
+                nn.ELU(),
+                nn.Linear(16, config["input_dim"]),
+            ).to(device)
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
@@ -208,11 +230,22 @@ class GAM(nn.Module):
         self.device = device
         
         """encoder"""
-        self.encoder = nn.Sequential(
-            nn.Linear(config["input_dim"], 4),
-            nn.ELU(),
-            nn.Linear(4, config["node"] * 2),
-        ).to(device)
+        if config["dataset"] == 'covtype':
+            self.encoder = nn.Sequential(
+                nn.Linear(config["input_dim"], 4),
+                nn.ELU(),
+                nn.Linear(4, 4),
+                nn.ELU(),
+                nn.Linear(4, 4),
+                nn.ELU(),
+                nn.Linear(4, config["node"] * 2),
+            ).to(device)
+        else:
+            self.encoder = nn.Sequential(
+                nn.Linear(config["input_dim"], 4),
+                nn.ELU(),
+                nn.Linear(4, config["node"] * 2),
+            ).to(device)
         
         """Causal Adjacency Matrix"""
         self.B = B.to(device) 
@@ -230,12 +263,34 @@ class GAM(nn.Module):
             raise ValueError('Not supported SCM!')
         
         """decoder"""
-        self.decoder = nn.ModuleList(
-            [nn.Sequential(
-                nn.Linear(k, 2),
-                nn.ELU(),
-                nn.Linear(2, m),
-            ).to(device) for k, m in zip(config["factor"], self.mask)])
+        if config["dataset"] == 'covtype':
+            net = [nn.Sequential(
+                    nn.Linear(k, 2),
+                    nn.ELU(),
+                    nn.Linear(2, 2),
+                    nn.ELU(),
+                    nn.Linear(2, m),
+                ).to(device) for i, (k, m) in enumerate(zip(config["factor"], self.mask))
+                if i != len(self.mask)]
+            net += [
+                nn.Sequential(
+                    nn.Linear(config["factor"][-1], 4),
+                    nn.ELU(),
+                    nn.Linear(4, 4),
+                    nn.ELU(),
+                    nn.Linear(4, 8),
+                    nn.ELU(),
+                    nn.Linear(8, self.mask[-1]),
+                ).to(device)
+            ]
+            self.decoder = nn.ModuleList(net)
+        else:
+            self.decoder = nn.ModuleList(
+                [nn.Sequential(
+                    nn.Linear(k, 2),
+                    nn.ELU(),
+                    nn.Linear(2, m),
+                ).to(device) for k, m in zip(config["factor"], self.mask)])
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
