@@ -116,27 +116,18 @@ def main():
     Forest Cover Type Prediction:
     """
     if config["dataset"] == 'loan':
-        config["node"] = 3
         B = torch.zeros(config["node"], config["node"])
-        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
-        config["input_dim"] = 5
     
     elif config["dataset"] == 'adult':
-        config["node"] = 3
         B = torch.zeros(config["node"], config["node"])
-        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
-        config["input_dim"] = 5
     
     elif config["dataset"] == 'covtype':
-        config["node"] = 6
         B = torch.zeros(config["node"], config["node"])
-        config["factor"] = [1, 1, 1, 1, 1, 1]
         B[[0, 3, 4, 5], 1] = 1
         B[[3, 4, 5], 2] = 1
         B[[0, 5], 3] = 1
-        config["input_dim"] = 8
         
     else:
         raise ValueError('Not supported dataset!')
@@ -350,7 +341,7 @@ def main():
         print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
         wandb.log({'F1 (Sample)': f1})
     
-    elif config["dataset"] == 'credit':
+    elif config["dataset"] == 'covtype':
         from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
         clf = RandomForestClassifier(random_state=0)
@@ -363,7 +354,6 @@ def main():
     else:
         raise ValueError('Not supported dataset!')
     #%%
-    wandb.config.update(config)
     wandb.run.finish()
 #%%
 if __name__ == '__main__':
