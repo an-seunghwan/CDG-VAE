@@ -62,8 +62,8 @@ def main():
     
     model_name = 'TVAE'
     
-    dataset = 'loan'
-    # dataset = 'adult'
+    # dataset = 'loan'
+    dataset = 'adult'
     # dataset = 'covtype'
     
     """model load"""
@@ -89,7 +89,14 @@ def main():
     dataset_module = importlib.import_module('modules.{}_datasets'.format(config["dataset"]))
     TabularDataset2 = dataset_module.TabularDataset2
     
-    dataset = TabularDataset2(config)
+    if config["dataset"] == 'loan':
+        dataset = TabularDataset2(config, random_state=8)
+    elif config["dataset"] == 'adult':
+        dataset = TabularDataset2(config) # 0
+    elif config["dataset"] == 'covtype':
+        dataset = TabularDataset2(config, random_state=0)
+    else:
+        raise ValueError('Not supported dataset!')
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     config["input_dim"] = dataset.transformer.output_dimensions
@@ -240,10 +247,10 @@ def main():
     except:
         cols = [item for sublist in dataset.topology for item in sublist]
         train_df = pd.DataFrame(train_recon.to_numpy(), columns=cols)
-    train_df = train_df[dataset.continuous]
+    train_df = train_df[df.columns]
     cg = pc(data=train_df.to_numpy(), 
             alpha=0.05, 
-            indep_test='fisherz') 
+            indep_test=i_test) 
     print(cg.G)
     
     # SHD: https://arxiv.org/pdf/1306.1043.pdf
@@ -284,10 +291,10 @@ def main():
     except:
         cols = [item for sublist in dataset.topology for item in sublist]
         sample_df = pd.DataFrame(sample_df.to_numpy(), columns=cols)
-    sample_df = sample_df[dataset.continuous]
+    sample_df = sample_df[df.columns]
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
-            indep_test='fisherz') 
+            indep_test=i_test) 
     print(cg.G)
     
     # SHD: https://arxiv.org/pdf/1306.1043.pdf
