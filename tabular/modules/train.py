@@ -310,7 +310,8 @@ def train_TVAE(output_info_list, dataset, dataloader, model, config, optimizer, 
         
         loss.backward()
         optimizer.step()
-        model.sigma.data.clamp_(0.01, 0.1)
+        # model.sigma.data.clamp_(0.01, 0.1)
+        model.sigma.data.clamp_(config["sigma_range"][0], config["sigma_range"][1])
             
         """accumulate losses"""
         for x, y in loss_:

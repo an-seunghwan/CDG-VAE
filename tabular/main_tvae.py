@@ -93,6 +93,8 @@ def get_args(debug):
     #                     help='observation noise')
     parser.add_argument('--lambda', default=5, type=float,
                         help='weight of label alignment loss')
+    parser.add_argument('--sigma_range', default=[0.1, 1], type=arg_as_list,
+                        help='range of observational noise')
     
     if debug:
         return parser.parse_args(args=[])
