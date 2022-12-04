@@ -44,7 +44,7 @@ import argparse
 def get_args(debug):
     parser = argparse.ArgumentParser('parameters')
     
-    parser.add_argument('--num', type=int, default=72, 
+    parser.add_argument('--num', type=int, default=0, 
                         help='model version')
 
     if debug:
@@ -101,21 +101,15 @@ def main():
     Forest Cover Type Prediction:
     """
     if config["dataset"] == 'loan':
-        config["node"] = 3
         B = torch.zeros(config["node"], config["node"])
-        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
     
     elif config["dataset"] == 'adult':
-        config["node"] = 3
         B = torch.zeros(config["node"], config["node"])
-        config["factor"] = [1, 1, 1]
         B[:-1, -1] = 1
     
     elif config["dataset"] == 'covtype':
-        config["node"] = 6
         B = torch.zeros(config["node"], config["node"])
-        config["factor"] = [1, 1, 1, 1, 1, 1]
         B[[0, 3, 4, 5], 1] = 1
         B[[3, 4, 5], 2] = 1
         B[[0, 5], 3] = 1
@@ -180,6 +174,8 @@ def main():
         train = df_.iloc[:4000]
         test = df_.iloc[4000:]
         
+        i_test = 'chisq'
+        
     elif config["dataset"] == 'adult':
         df = pd.read_csv('./data/adult.csv')
         df = df.sample(frac=1, random_state=1).reset_index(drop=True)
@@ -193,14 +189,25 @@ def main():
         train = df_.iloc[:40000]
         test = df_.iloc[40000:]
         
-    # elif config["dataset"] == 'covtype':
+        i_test = 'chisq'
+        
+    elif config["dataset"] == 'covtype':
+        df = pd.read_csv('./data/covtype.csv')
+        df = df.sample(frac=1, random_state=5).reset_index(drop=True)
+        df = df[dataset.continuous]
+        df = df.dropna(axis=0)
+        
+        train = df.iloc[2000:, ]
+        test = df.iloc[:2000, ]
+        
+        i_test = 'fisherz'
         
     else:
         raise ValueError('Not supported dataset!')
     
     cg = pc(data=train.to_numpy(), 
             alpha=0.05, 
-            indep_test='chisq') 
+            indep_test=i_test) 
     print(cg.G)
     trainG = cg.G.graph
     
@@ -322,10 +329,10 @@ def main():
     
     elif config["dataset"] == 'covtype':
         from sklearn.ensemble import RandomForestClassifier
-        covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
+        covariates = [x for x in train.columns if x != 'Cover_Type']
         clf = RandomForestClassifier(random_state=0)
-        clf.fit(dataset.train[covariates], dataset.train['Cover_Type'])
-        acc_baseline = clf.score(testdataset.test[covariates], testdataset.test['Cover_Type'])
+        clf.fit(train[covariates], train['Cover_Type'])
+        acc_baseline = clf.score(test[covariates], test['Cover_Type'])
         
         print("Baseline Accuracy: {:.2f}%".format(acc_baseline * 100))
         wandb.log({'Acc (Baseline)': acc_baseline})
@@ -362,10 +369,10 @@ def main():
     
     elif config["dataset"] == 'covtype':
         from sklearn.ensemble import RandomForestClassifier
-        covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
+        covariates = [x for x in train.columns if x != 'Cover_Type']
         clf = RandomForestClassifier(random_state=0)
         clf.fit(sample_df[covariates], sample_df['Cover_Type'])
-        acc = clf.score(testdataset.test[covariates], testdataset.test['Cover_Type'])
+        acc = clf.score(test[covariates], test['Cover_Type'])
         
         print("{}-{} Accuracy: {:.2f}%".format(config["model"], config["dataset"], acc * 100))
         wandb.log({'Acc (Sample)': acc})
