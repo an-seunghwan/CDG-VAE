@@ -250,7 +250,7 @@ def main():
     train_df = train_df[df.columns]
     cg = pc(data=train_df.to_numpy(), 
             alpha=0.05, 
-            indep_test=i_test) 
+            indep_test='fisherz') 
     print(cg.G)
     
     # SHD: https://arxiv.org/pdf/1306.1043.pdf
@@ -294,7 +294,7 @@ def main():
     sample_df = sample_df[df.columns]
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
-            indep_test=i_test) 
+            indep_test='fisherz') 
     print(cg.G)
     
     # SHD: https://arxiv.org/pdf/1306.1043.pdf
