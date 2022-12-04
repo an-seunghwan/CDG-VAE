@@ -116,7 +116,14 @@ def main():
     dataset_module = importlib.import_module('modules.{}_datasets'.format(config["dataset"]))
     TabularDataset2 = dataset_module.TabularDataset2
     
-    dataset = TabularDataset2(config)
+    if config["dataset"] == 'loan':
+        dataset = TabularDataset2(config, random_state=8)
+    elif config["dataset"] == 'adult':
+        dataset = TabularDataset2(config) # 0
+    elif config["dataset"] == 'covtype':
+        dataset = TabularDataset2(config, random_state=0)
+    else:
+        raise ValueError('Not supported dataset!')
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
     
     config["input_dim"] = dataset.transformer.output_dimensions

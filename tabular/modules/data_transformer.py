@@ -39,7 +39,7 @@ class DataTransformer(object):
         self._max_clusters = max_clusters
         self._weight_threshold = weight_threshold
 
-    def _fit_continuous(self, data):
+    def _fit_continuous(self, data, random_state=0):
         """Train Bayesian GMM for continuous columns.
         Args:
             data (pd.DataFrame):
@@ -49,7 +49,8 @@ class DataTransformer(object):
                 A ``ColumnTransformInfo`` object.
         """
         column_name = data.columns[0]
-        gm = ClusterBasedNormalizer(model_missing_values=True, max_clusters=min(len(data), 10))
+        gm = ClusterBasedNormalizer(model_missing_values=True, max_clusters=min(len(data), 10),
+                                    random_state=random_state)
         gm.fit(data, column_name)
         num_components = sum(gm.valid_component_indicator)
 
@@ -77,7 +78,7 @@ class DataTransformer(object):
             output_info=[SpanInfo(num_categories, 'softmax')],
             output_dimensions=num_categories)
 
-    def fit(self, raw_data, discrete_columns=()):
+    def fit(self, raw_data, discrete_columns=(), random_state=0):
         """Fit the ``DataTransformer``.
         Fits a ``ClusterBasedNormalizer`` for continuous columns and a
         ``OneHotEncoder`` for discrete columns.
@@ -100,7 +101,8 @@ class DataTransformer(object):
             if column_name in discrete_columns:
                 column_transform_info = self._fit_discrete(raw_data[[column_name]])
             else:
-                column_transform_info = self._fit_continuous(raw_data[[column_name]])
+                column_transform_info = self._fit_continuous(raw_data[[column_name]],
+                                                             random_state=random_state)
 
             self.output_info_list.append(column_transform_info.output_info)
             self.output_dimensions += column_transform_info.output_dimensions

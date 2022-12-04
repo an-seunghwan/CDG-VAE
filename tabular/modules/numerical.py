@@ -364,7 +364,8 @@ class ClusterBasedNormalizer(FloatFormatter):
     valid_component_indicator = None
 
     def __init__(self, model_missing_values=False, learn_rounding_scheme=False,
-                 enforce_min_max_values=False, max_clusters=10, weight_threshold=0.005):
+                 enforce_min_max_values=False, max_clusters=10, weight_threshold=0.005,
+                 random_state=0):
         super().__init__(
             model_missing_values=model_missing_values,
             learn_rounding_scheme=learn_rounding_scheme,
@@ -376,6 +377,7 @@ class ClusterBasedNormalizer(FloatFormatter):
             'normalized': {'sdtype': 'float', 'next_transformer': None},
             'component': {'sdtype': 'categorical', 'next_transformer': None},
         }
+        self.random_state = random_state
 
     def _fit(self, data):
         """Fit the transformer to the data.
@@ -388,7 +390,7 @@ class ClusterBasedNormalizer(FloatFormatter):
             weight_concentration_prior_type='dirichlet_process',
             weight_concentration_prior=0.001,
             n_init=1,
-            random_state=0 # randomness control
+            random_state=self.random_state # randomness control
         )
 
         super()._fit(data)

@@ -138,7 +138,7 @@ class TestTabularDataset(Dataset):
         return x, y
 #%%
 class TabularDataset2(Dataset): 
-    def __init__(self, config):
+    def __init__(self, config, random_state=0):
         # if config["dataset"] == 'adult':
         df = pd.read_csv('./data/adult.csv')
         df = df.sample(frac=1, random_state=1).reset_index(drop=True)
@@ -176,7 +176,7 @@ class TabularDataset2(Dataset):
         df = df[self.flatten_topology].iloc[:4000]
         
         transformer = DataTransformer()
-        transformer.fit(df, discrete_columns=['income'])
+        transformer.fit(df, discrete_columns=['income'], random_state=random_state)
         train_data = transformer.transform(df)
         self.transformer = transformer
             

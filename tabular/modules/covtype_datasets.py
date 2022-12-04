@@ -152,7 +152,7 @@ class TestTabularDataset(Dataset):
         return x, y
 #%%
 class TabularDataset2(Dataset): 
-    def __init__(self, config):
+    def __init__(self, config, random_state=0):
         # if config["dataset"] == 'covtype':
         base = pd.read_csv('./data/covtype.csv')
         base = base.sample(frac=1, random_state=5).reset_index(drop=True)
@@ -200,7 +200,7 @@ class TabularDataset2(Dataset):
         df = df[self.flatten_topology].iloc[2000:]
         
         transformer = DataTransformer()
-        transformer.fit(df, discrete_columns=['Cover_Type'])
+        transformer.fit(df, discrete_columns=['Cover_Type'], random_state=random_state)
         train_data = transformer.transform(df)
         self.transformer = transformer
             
