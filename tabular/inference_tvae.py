@@ -22,6 +22,10 @@ from modules.simulation import (
 )
 
 from modules.model import TVAE
+
+import statsmodels.api as sm
+from sklearn.metrics import f1_score
+from sklearn.ensemble import RandomForestClassifier
 #%%
 import sys
 import subprocess
@@ -302,7 +306,6 @@ def main():
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     """Machine Learning Efficacy"""
-    import statsmodels.api as sm
     
     # Baseline
     if config["dataset"] == 'loan':
@@ -316,7 +319,6 @@ def main():
         wandb.log({'R^2 (Baseline)': rsq_baseline})
         
     elif config["dataset"] == 'adult':
-        from sklearn.metrics import f1_score
         covariates = [x for x in train.columns if x != 'income']
         logistic = sm.Logit(train['income'], train[covariates]).fit()
         logistic.summary()
@@ -328,14 +330,15 @@ def main():
         wandb.log({'F1 (Baseline)': f1_baseline})
     
     elif config["dataset"] == 'covtype':
-        from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in train.columns if x != 'Cover_Type']
         clf = RandomForestClassifier(random_state=0)
         clf.fit(train[covariates], train['Cover_Type'])
-        acc_baseline = clf.score(test[covariates], test['Cover_Type'])
+        pred = clf.predict(test[covariates])
+        f1_baseline = f1_score(test['Cover_Type'].to_numpy(), pred, average='micro')
+        # acc_baseline = clf.score(test[covariates], test['Cover_Type'])
         
-        print("Baseline Accuracy: {:.2f}%".format(acc_baseline * 100))
-        wandb.log({'Acc (Baseline)': acc_baseline})
+        print("Baseline F1: {:.2f}".format(f1_baseline))
+        wandb.log({'F1 (Baseline)': f1_baseline})
     
     else:
         raise ValueError('Not supported dataset!')
@@ -354,7 +357,6 @@ def main():
         wandb.log({'R^2 (Sample)': rsq})
         
     elif config["dataset"] == 'adult':
-        from sklearn.metrics import f1_score
         covariates = [x for x in sample_df.columns if x != 'income']
         sample_df[covariates] = (sample_df[covariates] - sample_df[covariates].mean(axis=0)) / sample_df[covariates].std(axis=0)
         
@@ -368,14 +370,15 @@ def main():
         wandb.log({'F1 (Sample)': f1})
     
     elif config["dataset"] == 'covtype':
-        from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in train.columns if x != 'Cover_Type']
         clf = RandomForestClassifier(random_state=0)
         clf.fit(sample_df[covariates], sample_df['Cover_Type'])
-        acc = clf.score(test[covariates], test['Cover_Type'])
+        pred = clf.predict(test[covariates])
+        f1 = f1_score(test['Cover_Type'].to_numpy(), pred, average='micro')
+        # acc = clf.score(test[covariates], test['Cover_Type'])
         
-        print("{}-{} Accuracy: {:.2f}%".format(config["model"], config["dataset"], acc * 100))
-        wandb.log({'Acc (Sample)': acc})
+        print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
+        wandb.log({'F1 (Sample)': f1})
     
     else:
         raise ValueError('Not supported dataset!')
