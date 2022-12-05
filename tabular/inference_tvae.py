@@ -194,11 +194,11 @@ def main():
         df['income'] = df['income'].map({'<=50K': 0, '>50K': 1, '<=50K.': 0, '>50K.': 1})
         df = df[dataset.continuous]
         
-        scaling = [x for x in dataset.continuous if x != 'income']
-        df_ = df.copy()
-        df_[scaling] = (df[scaling] - df[scaling].mean(axis=0)) / df[scaling].std(axis=0)
-        train = df_.iloc[:40000]
-        test = df_.iloc[40000:]
+        # scaling = [x for x in dataset.continuous if x != 'income']
+        # df_ = df.copy()
+        # df_[scaling] = (df[scaling] - df[scaling].mean(axis=0)) / df[scaling].std(axis=0)
+        train = df.iloc[:40000]
+        test = df.iloc[40000:]
         
         i_test = 'chisq'
         
@@ -318,7 +318,6 @@ def main():
     if config["dataset"] == 'loan':
         covariates = [x for x in train.columns if x != 'CCAvg']
         linreg = sm.OLS(train['CCAvg'], train[covariates]).fit()
-        linreg.summary()
         pred = linreg.predict(test[covariates])
         rsq_baseline = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
         
@@ -327,9 +326,12 @@ def main():
         
     elif config["dataset"] == 'adult':
         covariates = [x for x in train.columns if x != 'income']
-        logistic = sm.Logit(train['income'], train[covariates]).fit()
-        logistic.summary()
-        pred = logistic.predict(test[covariates])
+        
+        clf = RandomForestClassifier(random_state=0)
+        clf.fit(train[covariates], train['income'])
+        pred = clf.predict(test[covariates])
+        # logistic = sm.Logit(train['income'], train[covariates]).fit()
+        # pred = logistic.predict(test[covariates])
         pred = (pred > 0.5).astype(float)
         f1_baseline = f1_score(test['income'], pred)
         
@@ -338,6 +340,7 @@ def main():
     
     elif config["dataset"] == 'covtype':
         covariates = [x for x in train.columns if x != 'Cover_Type']
+        
         clf = RandomForestClassifier(random_state=0)
         clf.fit(train[covariates], train['Cover_Type'])
         pred = clf.predict(test[covariates])
@@ -357,19 +360,20 @@ def main():
         
         covariates = [x for x in sample_df.columns if x != 'CCAvg']
         linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
-        linreg.summary()
         pred = linreg.predict(test[covariates])
         rsq = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
+        
         print("{}-{} R-squared: {:.2f}".format(config["model"], config["dataset"], rsq))
         wandb.log({'R^2 (Sample)': rsq})
         
     elif config["dataset"] == 'adult':
         covariates = [x for x in sample_df.columns if x != 'income']
-        sample_df[covariates] = (sample_df[covariates] - sample_df[covariates].mean(axis=0)) / sample_df[covariates].std(axis=0)
         
-        logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
-        logistic.summary()
-        pred = logistic.predict(test[covariates])
+        clf = RandomForestClassifier(random_state=0)
+        clf.fit(sample_df[covariates], sample_df['income'])
+        pred = clf.predict(test[covariates])
+        # logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
+        # pred = logistic.predict(test[covariates])
         pred = (pred > 0.5).astype(float)
         f1 = f1_score(test['income'], pred)
         
@@ -378,6 +382,7 @@ def main():
     
     elif config["dataset"] == 'covtype':
         covariates = [x for x in train.columns if x != 'Cover_Type']
+        
         clf = RandomForestClassifier(random_state=0)
         clf.fit(sample_df[covariates], sample_df['Cover_Type'])
         pred = clf.predict(test[covariates])
