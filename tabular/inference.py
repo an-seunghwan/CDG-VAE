@@ -58,10 +58,9 @@ def main():
     # model_name = 'InfoMax'
     model_name = 'GAM'
     
-    # dataset = 'loan'
-    # config["dataset"] = 'loan'
+    dataset = 'loan'
     # dataset = 'adult'
-    dataset = 'covtype'
+    # dataset = 'covtype'
     
     """model load"""
     artifact = wandb.use_artifact(
@@ -89,21 +88,6 @@ def main():
     
     dataset = TabularDataset(config)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
-    
-    from causallearn.search.ConstraintBased.PC import pc
-    from causallearn.utils.GraphUtils import GraphUtils
-    
-    cg = pc(data=dataset.train.to_numpy(), 
-            alpha=0.05, 
-            indep_test='fisherz') 
-    print(cg.G)
-    trainG = cg.G.graph
-    
-    # visualization
-    pdy = GraphUtils.to_pydot(cg.G, labels=dataset.continuous)
-    pdy.write_png('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
-    fig = Image.open('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
-    wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
     """
     Causal Adjacency Matrix
@@ -118,16 +102,22 @@ def main():
     if config["dataset"] == 'loan':
         B = torch.zeros(config["node"], config["node"])
         B[:-1, -1] = 1
+        
+        i_test = 'chisq'
     
     elif config["dataset"] == 'adult':
         B = torch.zeros(config["node"], config["node"])
         B[:-1, -1] = 1
+        
+        i_test = 'chisq'
     
     elif config["dataset"] == 'covtype':
         B = torch.zeros(config["node"], config["node"])
         B[[0, 3, 4, 5], 1] = 1
         B[[3, 4, 5], 2] = 1
         B[[0, 5], 3] = 1
+        
+        i_test = 'fisherz'
         
     else:
         raise ValueError('Not supported dataset!')
@@ -186,6 +176,21 @@ def main():
     
     model.eval()
     #%%
+    from causallearn.search.ConstraintBased.PC import pc
+    from causallearn.utils.GraphUtils import GraphUtils
+    
+    cg = pc(data=dataset.train.to_numpy(), 
+            alpha=0.05, 
+            indep_test=i_test) 
+    print(cg.G)
+    trainG = cg.G.graph
+    
+    # visualization
+    pdy = GraphUtils.to_pydot(cg.G, labels=dataset.continuous)
+    pdy.write_png('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
+    fig = Image.open('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
+    wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
+    #%%
     testdataset = TestTabularDataset(config)
     testdataloader = DataLoader(testdataset, batch_size=config["batch_size"], shuffle=True)
     #%%
@@ -225,8 +230,6 @@ def main():
     train_df = train_df[dataset.continuous]
     if 'income' in dataset.continuous:
         train_df['income'] = train_df['income'].apply(lambda x: 1 if x > 0 else 0)
-    if 'TARGET' in dataset.continuous:
-        train_df['TARGET'] = train_df['TARGET'].apply(lambda x: 1 if x > 0 else 0)
     
     cg = pc(data=train_df.to_numpy(), 
             alpha=0.05, 
@@ -254,8 +257,6 @@ def main():
     sample_df = sample_df[dataset.continuous]
     if 'income' in dataset.continuous:
         sample_df['income'] = sample_df['income'].apply(lambda x: 1 if x > 0 else 0)
-    if 'TARGET' in dataset.continuous:
-        sample_df['TARGET'] = sample_df['TARGET'].apply(lambda x: 1 if x > 0 else 0)
     
     cg = pc(data=sample_df.to_numpy(), 
             alpha=0.05, 
@@ -278,13 +279,13 @@ def main():
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     """Machine Learning Efficacy"""
-    import statsmodels.api as sm
     
     # Baseline
     if config["dataset"] == 'loan':
+        import statsmodels.api as sm
         covariates = [x for x in dataset.train.columns if x != 'CCAvg']
+        
         linreg = sm.OLS(dataset.train['CCAvg'], dataset.train[covariates]).fit()
-        linreg.summary()
         pred = linreg.predict(testdataset.test[covariates])
         rsq_baseline = 1 - (testdataset.test['CCAvg'] - pred).pow(2).sum() / np.var(testdataset.test['CCAvg']) / testdataset.__len__()
         
@@ -293,10 +294,12 @@ def main():
         
     elif config["dataset"] == 'adult':
         from sklearn.metrics import f1_score
+        from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'income']
-        logistic = sm.Logit(dataset.train['income'], dataset.train[covariates]).fit()
-        logistic.summary()
-        pred = logistic.predict(testdataset.test[covariates])
+        
+        clf = RandomForestClassifier(random_state=0)
+        clf.fit(dataset.train[covariates], dataset.train['income'])
+        pred = clf.predict(testdataset.test[covariates])
         pred = (pred > 0.5).astype(float)
         f1_baseline = f1_score(testdataset.test['income'], pred)
         
@@ -304,14 +307,17 @@ def main():
         wandb.log({'F1 (Baseline)': f1_baseline})
     
     elif config["dataset"] == 'covtype':
+        from sklearn.metrics import f1_score
         from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
+        
         clf = RandomForestClassifier(random_state=0)
         clf.fit(dataset.train[covariates], dataset.train['Cover_Type'])
-        acc_baseline = clf.score(testdataset.test[covariates], testdataset.test['Cover_Type'])
+        pred = clf.predict(testdataset.test[covariates])
+        f1_baseline = f1_score(testdataset.test['Cover_Type'].to_numpy(), pred, average='micro')
         
-        print("Baseline Accuracy: {:.2f}%".format(acc_baseline * 100))
-        wandb.log({'Acc (Baseline)': acc_baseline})
+        print("Baseline F1: {:.2f}".format(f1_baseline))
+        wandb.log({'F1 (Baseline)': f1_baseline})
     
     else:
         raise ValueError('Not supported dataset!')
@@ -327,14 +333,15 @@ def main():
         wandb.log({'R^2 (Sample)': rsq})
         
     elif config["dataset"] == 'adult':
+        from sklearn.metrics import f1_score
+        from sklearn.ensemble import RandomForestClassifier
         if 'income' in dataset.continuous:
             sample_df['income'] = sample_df['income'].apply(lambda x: 1 if x > 0 else 0)
-            
-        from sklearn.metrics import f1_score
         covariates = [x for x in dataset.train.columns if x != 'income']
-        logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
-        logistic.summary()
-        pred = logistic.predict(testdataset.test[covariates])
+        
+        clf = RandomForestClassifier(random_state=0)
+        clf.fit(sample_df[covariates], sample_df['income'])
+        pred = clf.predict(testdataset.test[covariates])
         pred = (pred > 0.5).astype(float)
         f1 = f1_score(testdataset.test['income'], pred)
         
@@ -342,14 +349,17 @@ def main():
         wandb.log({'F1 (Sample)': f1})
     
     elif config["dataset"] == 'covtype':
+        from sklearn.metrics import f1_score
         from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
+        
         clf = RandomForestClassifier(random_state=0)
         clf.fit(sample_df[covariates], sample_df['Cover_Type'])
-        acc = clf.score(testdataset.test[covariates], testdataset.test['Cover_Type'])
+        pred = clf.predict(testdataset.test[covariates])
+        f1 = f1_score(testdataset.test['Cover_Type'].to_numpy(), pred, average='micro')
         
-        print("{}-{} Accuracy: {:.2f}%".format(config["model"], config["dataset"], acc * 100))
-        wandb.log({'Acc (Sample)': acc})
+        print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
+        wandb.log({'F1 (Sample)': f1})
     
     else:
         raise ValueError('Not supported dataset!')
