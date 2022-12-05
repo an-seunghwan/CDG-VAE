@@ -20,6 +20,10 @@ from modules.simulation import (
     set_random_seed,
     is_dag,
 )
+
+import statsmodels.api as sm
+from sklearn.metrics import f1_score
+from sklearn.ensemble import RandomForestClassifier
 #%%
 import sys
 import subprocess
@@ -58,9 +62,10 @@ def main():
     # model_name = 'InfoMax'
     model_name = 'GAM'
     
-    dataset = 'loan'
+    # dataset = 'loan'
+    # config["dataset"] = 'loan'
     # dataset = 'adult'
-    # dataset = 'covtype'
+    dataset = 'covtype'
     
     """model load"""
     artifact = wandb.use_artifact(
@@ -282,7 +287,6 @@ def main():
     
     # Baseline
     if config["dataset"] == 'loan':
-        import statsmodels.api as sm
         covariates = [x for x in dataset.train.columns if x != 'CCAvg']
         
         linreg = sm.OLS(dataset.train['CCAvg'], dataset.train[covariates]).fit()
@@ -293,8 +297,6 @@ def main():
         wandb.log({'R^2 (Baseline)': rsq_baseline})
         
     elif config["dataset"] == 'adult':
-        from sklearn.metrics import f1_score
-        from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'income']
         
         clf = RandomForestClassifier(random_state=0)
@@ -307,8 +309,6 @@ def main():
         wandb.log({'F1 (Baseline)': f1_baseline})
     
     elif config["dataset"] == 'covtype':
-        from sklearn.metrics import f1_score
-        from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
         
         clf = RandomForestClassifier(random_state=0)
@@ -333,8 +333,6 @@ def main():
         wandb.log({'R^2 (Sample)': rsq})
         
     elif config["dataset"] == 'adult':
-        from sklearn.metrics import f1_score
-        from sklearn.ensemble import RandomForestClassifier
         if 'income' in dataset.continuous:
             sample_df['income'] = sample_df['income'].apply(lambda x: 1 if x > 0 else 0)
         covariates = [x for x in dataset.train.columns if x != 'income']
@@ -349,8 +347,6 @@ def main():
         wandb.log({'F1 (Sample)': f1})
     
     elif config["dataset"] == 'covtype':
-        from sklearn.metrics import f1_score
-        from sklearn.ensemble import RandomForestClassifier
         covariates = [x for x in dataset.train.columns if x != 'Cover_Type']
         
         clf = RandomForestClassifier(random_state=0)
