@@ -62,8 +62,8 @@ def main():
     
     model_name = 'TVAE'
     
-    # dataset = 'loan'
-    dataset = 'adult'
+    dataset = 'loan'
+    # dataset = 'adult'
     # dataset = 'covtype'
     
     """model load"""
