@@ -142,9 +142,13 @@ class VAE(nn.Module):
         """decoder"""
         if config["dataset"] == 'covtype':
             self.decoder = nn.Sequential(
-                nn.Linear(config["node"], 4),
+                nn.Linear(config["node"], 8),
                 nn.ELU(),
-                nn.Linear(4, config["input_dim"]),
+                nn.Linear(8, 8),
+                nn.ELU(),
+                nn.Linear(8, 16),
+                nn.ELU(),
+                nn.Linear(16, config["input_dim"] - 1 + 7),
             ).to(device)
         else:
             self.decoder = nn.Sequential(
