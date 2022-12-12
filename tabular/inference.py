@@ -62,10 +62,10 @@ def main():
     # model_name = 'InfoMax'
     model_name = 'GAM'
     
-    # dataset = 'loan'
+    dataset = 'loan'
     # config["dataset"] = 'loan'
     # dataset = 'adult'
-    dataset = 'covtype'
+    # dataset = 'covtype'
     
     """model load"""
     artifact = wandb.use_artifact(
