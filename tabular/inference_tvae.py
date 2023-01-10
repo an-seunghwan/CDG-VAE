@@ -23,9 +23,10 @@ from modules.simulation import (
 
 from modules.model import TVAE
 
-import statsmodels.api as sm
-from sklearn.metrics import f1_score
-from sklearn.ensemble import RandomForestClassifier
+from modules.evaluation import (
+    regression_eval,
+    classification_eval,
+)
 #%%
 import sys
 import subprocess
@@ -41,7 +42,7 @@ except:
 run = wandb.init(
     project="CausalDisentangled", 
     entity="anseunghwan",
-    tags=["Tabular", "VAEBased", "Inference"],
+    tags=["Tabular", "VAEBased", "Inference2"],
 )
 #%%
 import argparse
@@ -313,85 +314,45 @@ def main():
     wandb.log({'Reconstructed DAG (Sampled)': wandb.Image(fig)})
     #%%
     """Machine Learning Efficacy"""
+    if config["dataset"] == "loan": # regression
+        target = 'CCAvg'
+        
+        # baseline
+        print("\nBaseline: Machine Learning Utility in Regression...\n")
+        base_r2result = regression_eval(train, test, target)
+        wandb.log({'R^2 (Baseline)': np.mean([x[1] for x in base_r2result])})
+        
+        # Synthetic
+        print("\nSynthetic: Machine Learning Utility in Regression...\n")
+        r2result = regression_eval(sample_df, test, target)
+        wandb.log({'R^2 (Synthetic)': np.mean([x[1] for x in r2result])})
     
-    # Baseline
-    if config["dataset"] == 'loan':
-        covariates = [x for x in train.columns if x != 'CCAvg']
-        linreg = sm.OLS(train['CCAvg'], train[covariates]).fit()
-        pred = linreg.predict(test[covariates])
-        rsq_baseline = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
+    elif config["dataset"] == "adult": # classification
+        target = 'income' 
         
-        print("Baseline R-squared: {:.2f}".format(rsq_baseline))
-        wandb.log({'R^2 (Baseline)': rsq_baseline})
+        # baseline
+        print("\nBaseline: Machine Learning Utility in Classification...\n")
+        base_f1result = classification_eval(train, test, target)
+        wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
         
-    elif config["dataset"] == 'adult':
-        covariates = [x for x in train.columns if x != 'income']
+        # Synthetic
+        print("\nSynthetic: Machine Learning Utility in Classification...\n")
+        f1result = classification_eval(sample_df, test, target)
+        wandb.log({'F1 (Synthetic)': np.mean([x[1] for x in f1result])})
         
-        clf = RandomForestClassifier(random_state=0)
-        clf.fit(train[covariates], train['income'])
-        pred = clf.predict(test[covariates])
-        # logistic = sm.Logit(train['income'], train[covariates]).fit()
-        # pred = logistic.predict(test[covariates])
-        pred = (pred > 0.5).astype(float)
-        f1_baseline = f1_score(test['income'], pred)
+    elif config["dataset"] == "covtype": # classification
+        target = 'Cover_Type'
         
-        print("Baseline F1: {:.2f}".format(f1_baseline))
-        wandb.log({'F1 (Baseline)': f1_baseline})
-    
-    elif config["dataset"] == 'covtype':
-        covariates = [x for x in train.columns if x != 'Cover_Type']
+        # baseline
+        print("\nBaseline: Machine Learning Utility in Classification...\n")
+        base_f1result = classification_eval(train, test, target)
+        wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
         
-        clf = RandomForestClassifier(random_state=0)
-        clf.fit(train[covariates], train['Cover_Type'])
-        pred = clf.predict(test[covariates])
-        f1_baseline = f1_score(test['Cover_Type'].to_numpy(), pred, average='micro')
-        # acc_baseline = clf.score(test[covariates], test['Cover_Type'])
+        # Synthetic
+        print("\nSynthetic: Machine Learning Utility in Classification...\n")
+        f1result = classification_eval(sample_df, test, target)
+        wandb.log({'F1 (Synthetic)': np.mean([x[1] for x in f1result])})
         
-        print("Baseline F1: {:.2f}".format(f1_baseline))
-        wandb.log({'F1 (Baseline)': f1_baseline})
-    
-    else:
-        raise ValueError('Not supported dataset!')
-    #%%
-    # synthetic
-    if config["dataset"] == 'loan':
-        covariates = [x for x in sample_df.columns if x != 'CCAvg']
-        sample_df[covariates] = (sample_df[covariates] - sample_df[covariates].mean(axis=0)) / sample_df[covariates].std(axis=0)
-        
-        covariates = [x for x in sample_df.columns if x != 'CCAvg']
-        linreg = sm.OLS(sample_df['CCAvg'], sample_df[covariates]).fit()
-        pred = linreg.predict(test[covariates])
-        rsq = 1 - (test['CCAvg'] - pred).pow(2).sum() / np.var(test['CCAvg']) / len(test)
-        
-        print("{}-{} R-squared: {:.2f}".format(config["model"], config["dataset"], rsq))
-        wandb.log({'R^2 (Sample)': rsq})
-        
-    elif config["dataset"] == 'adult':
-        covariates = [x for x in sample_df.columns if x != 'income']
-        
-        clf = RandomForestClassifier(random_state=0)
-        clf.fit(sample_df[covariates], sample_df['income'])
-        pred = clf.predict(test[covariates])
-        # logistic = sm.Logit(sample_df['income'], sample_df[covariates]).fit()
-        # pred = logistic.predict(test[covariates])
-        pred = (pred > 0.5).astype(float)
-        f1 = f1_score(test['income'], pred)
-        
-        print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
-        wandb.log({'F1 (Sample)': f1})
-    
-    elif config["dataset"] == 'covtype':
-        covariates = [x for x in train.columns if x != 'Cover_Type']
-        
-        clf = RandomForestClassifier(random_state=0)
-        clf.fit(sample_df[covariates], sample_df['Cover_Type'])
-        pred = clf.predict(test[covariates])
-        f1 = f1_score(test['Cover_Type'].to_numpy(), pred, average='micro')
-        # acc = clf.score(test[covariates], test['Cover_Type'])
-        
-        print("{}-{} F1: {:.2f}".format(config["model"], config["dataset"], f1))
-        wandb.log({'F1 (Sample)': f1})
-    
     else:
         raise ValueError('Not supported dataset!')
     #%%
