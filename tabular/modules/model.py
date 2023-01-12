@@ -140,7 +140,23 @@ class VAE(nn.Module):
             raise ValueError('Not supported SCM!')
         
         """decoder"""
-        if config["dataset"] == 'covtype':
+        if config["dataset"] == 'loan':
+            self.decoder = nn.Sequential(
+                nn.Linear(config["node"], 4),
+                nn.ELU(),
+                nn.Linear(4, config["input_dim"]),
+            ).to(device)
+        elif config["dataset"] == 'adult':
+            self.decoder = nn.Sequential(
+                nn.Linear(config["node"], 8),
+                nn.ELU(),
+                nn.Linear(8, 8),
+                nn.ELU(),
+                nn.Linear(8, 16),
+                nn.ELU(),
+                nn.Linear(16, config["input_dim"]),
+            ).to(device)
+        elif config["dataset"] == 'covtype':
             self.decoder = nn.Sequential(
                 nn.Linear(config["node"], 8),
                 nn.ELU(),
@@ -151,15 +167,7 @@ class VAE(nn.Module):
                 nn.Linear(16, config["input_dim"] - 1 + 7),
             ).to(device)
         else:
-            self.decoder = nn.Sequential(
-                nn.Linear(config["node"], 8),
-                nn.ELU(),
-                nn.Linear(8, 8),
-                nn.ELU(),
-                nn.Linear(8, 16),
-                nn.ELU(),
-                nn.Linear(16, config["input_dim"]),
-            ).to(device)
+            raise ValueError('Not supported dataset!')
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
