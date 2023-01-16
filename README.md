@@ -52,7 +52,8 @@ python tabular/main_tvae.py
 
 ## Results
 
-<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do_GAM_nonlinear_github.png?raw=true" width="800"  height="300"  background-color:white></center>
+![bg](white)
+<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do_GAM_nonlinear_github.png?raw=true" width="800"  height="350"></center>
 
 ## directory and codes
 
