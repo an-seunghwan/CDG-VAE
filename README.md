@@ -1,6 +1,6 @@
 # Causally Disentangled Generative Variational AutoEncoder
 
-This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder with pytorch. 
+This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder (CDG-VAE) with pytorch. 
 
 ## Package Dependencies
 
@@ -15,26 +15,21 @@ Additional package requirements for this repository are described in `requiremen
 
 ### 1. How to Training & Evaluation  
 
-#### 1. pendulum datset experiment
+#### 1. pendulum datset
+
+##### training 
 
 - training CDG-VAE
 ```
 python main.py --model "GAM"
 ```   
-- training CDG-VAE under semi-supervised learning
-```
-python main_semi.py --model "GAM"
-```   
 - training CDG-VAE for evaluation of distributional robustness
 ```
 python DR/main.py --model "GAM"
 ```   
-- training CDG-VAE for evaluation of distributional robustness under semi-supervised learning
-```
-python DR/main_semi.py --model "GAM"
-```   
+(Note) The file names with `_semi` means training CDG-VAE under semi-supervised learning setting.
 
-#### 1-1. pendulum dataset results
+##### evaluation
 - counterfactual image generation
 ```
 python inference.py
@@ -48,31 +43,33 @@ python sample_efficiency.py
 python DR/robustness.py
 ```
 
-#### 2. tabular dataset experiment
-- training CDG-VAE
+#### 2. tabular dataset 
+
+##### training 
+- CDG-VAE
 ```
 python tabular/main.py --model "GAM"
 ```  
-- training CDG-TVAE
+- CDG-TVAE
 ```
 python tabular/main_tvae.py 
 ```  
 
-#### 2-1. tabular dataset results
-- for CDG-VAE
+##### evaluation
+- CDG-VAE
 ```
 python tabular/inference.py
 ```  
-- for CDG-TVAE
+- CDG-TVAE
 ```
 python tabular/inference_tvae.py 
 ```  
 
-<!-- ## Results
+## Results
 
-<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do/do_GAMsemi_nonlinear.png?raw=true" width="800"  height="400"></center> -->
+<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do/do_GAMsemi_nonlinear.png?raw=true" width="800"  height="400"></center>
 
-### 1. directory and codes
+## directory and codes
 
 ```
 .
