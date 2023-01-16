@@ -52,7 +52,7 @@ python tabular/main_tvae.py
 
 ## Results
 
-<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do/do_GAMsemi_nonlinear.png?raw=true" width="800"  height="400"></center>
+<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do_GAM_nonlinear_github.png?raw=true" width="800"  height="400"></center>
 
 ## directory and codes
 
