@@ -23,25 +23,16 @@ Additional package requirements for this repository are described in `requiremen
 ```
 python main.py --model "GAM"
 ```   
-- training CDG-VAE for evaluation of distributional robustness
+- training CDG-VAE in order to evaluate distributional robustness of downstream task
 ```
 python DR/main.py --model "GAM"
 ```   
 (Note) The file names with `_semi` means training CDG-VAE under semi-supervised learning setting.
 
 ##### evaluation
-- counterfactual image generation
-```
-python inference.py
-```
-- sample efficiency
-```
-python sample_efficiency.py
-```
-- distributional robustness
-```
-python DR/robustness.py
-```
+- counterfactual image generation: `inference.py`
+- sample efficiency of downstream task: `sample_efficiency.py`
+- distributional robustness of downstream task: `DR/robustness.py`
 
 #### 2. tabular dataset 
 
@@ -55,15 +46,9 @@ python tabular/main.py --model "GAM"
 python tabular/main_tvae.py 
 ```  
 
-##### evaluation
-- CDG-VAE
-```
-python tabular/inference.py
-```  
-- CDG-TVAE
-```
-python tabular/inference_tvae.py 
-```  
+##### evaluation (SHD and synthetic data quality)
+- CDG-VAE: `tabular/inference.py`
+- CDG-TVAE: `tabular/inference_tvae.py `
 
 ## Results
 
