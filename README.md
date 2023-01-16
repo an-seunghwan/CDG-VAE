@@ -17,7 +17,7 @@ Additional package requirements for this repository are described in `requiremen
 
 #### 1. pendulum datset
 
-##### training 
+#### training 
 
 - training CDG-VAE
 ```
@@ -29,14 +29,14 @@ python DR/main.py --model "GAM"
 ```   
 (Note) The file names with `_semi` means training CDG-VAE under semi-supervised learning setting.
 
-##### evaluation
+#### evaluation
 - counterfactual image generation: `inference.py`
 - sample efficiency of downstream task: `sample_efficiency.py`
 - distributional robustness of downstream task: `DR/robustness.py`
 
 #### 2. tabular dataset 
 
-##### training 
+#### training 
 - CDG-VAE
 ```
 python tabular/main.py --model "GAM"
@@ -46,13 +46,13 @@ python tabular/main.py --model "GAM"
 python tabular/main_tvae.py 
 ```  
 
-##### evaluation (SHD and synthetic data quality)
+#### evaluation (SHD and synthetic data quality)
 - CDG-VAE: `tabular/inference.py`
 - CDG-TVAE: `tabular/inference_tvae.py `
 
 ## Results
 
-<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do_GAM_nonlinear_github.png?raw=true" width="800"  height="400"></center>
+<center><img  src="https://github.com/an-seunghwan/causal_vae/blob/main/assets/do_GAM_nonlinear_github.png?raw=true" width="800"  height="300"  background-color:white></center>
 
 ## directory and codes
 
