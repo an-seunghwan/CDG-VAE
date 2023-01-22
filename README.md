@@ -2,6 +2,8 @@
 
 This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder (CDG-VAE) with pytorch. 
 
+> **_NOTE:_** This repository supports [WandB](https://wandb.ai/site) MLOps platform!
+
 ## Package Dependencies
 
 ```setup
