@@ -63,9 +63,9 @@ def main():
     # model_name = 'InfoMax'
     model_name = 'GAM'
     
-    dataset = 'loan'
+    # dataset = 'loan'
     # dataset = 'adult'
-    # dataset = 'covtype'
+    dataset = 'covtype'
     
     """model load"""
     artifact = wandb.use_artifact(
@@ -199,6 +199,11 @@ def main():
     testdataset = TestTabularDataset(config)
     testdataloader = DataLoader(testdataset, batch_size=config["batch_size"], shuffle=True)
     #%%
+    def gumbel_sampling(size, eps = 1e-20):
+        U = torch.rand(size)
+        G = (- (U + eps).log() + eps).log()
+        return G
+    #%%
     """train dataset representation"""
     train_recon = []
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
@@ -210,10 +215,13 @@ def main():
             out = model(x_batch, deterministic=True)
         train_recon.append(out[-1])
     train_recon = torch.cat(train_recon, dim=0)
+    
     if config["dataset"] == "covtype":
+        out = train_recon[:, 7:]
+        G = gumbel_sampling(out.shape)
+        _, out = (nn.LogSoftmax(dim=1)(out) + G).max(dim=1, keepdims=True)
         train_recon = torch.cat([
-            train_recon[:, :7],
-            train_recon[:, 7:].argmax(axis=1, keepdim=True)], dim=1)
+            train_recon[:, :7], out], dim=1)
     #%%
     """synthetic dataset"""
     torch.manual_seed(config["seed"])
@@ -224,10 +232,13 @@ def main():
             sample_recon = model.decode(latent)[1]
         else:
             sample_recon = model.decoder(torch.cat(latent, dim=1))
+    
     if config["dataset"] == "covtype":
+        out = sample_recon[:, 7:]
+        G = gumbel_sampling(out.shape)
+        _, out = (nn.LogSoftmax(dim=1)(out) + G).max(dim=1, keepdims=True)
         sample_recon = torch.cat([
-            sample_recon[:, :7],
-            sample_recon[:, 7:].argmax(axis=1, keepdim=True)], dim=1)
+            sample_recon[:, :7], out], dim=1)
     #%%
     """PC algorithm : train dataset representation"""
     cols = [item for sublist in dataset.topology for item in sublist]
@@ -313,10 +324,10 @@ def main():
     elif config["dataset"] == "covtype": # classification
         target = 'Cover_Type'
         
-        # baseline
-        print("\nBaseline: Machine Learning Utility in Classification...\n")
-        base_f1result = classification_eval(dataset.train, testdataset.test, target)
-        wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
+        # # baseline
+        # print("\nBaseline: Machine Learning Utility in Classification...\n")
+        # base_f1result = classification_eval(dataset.train, testdataset.test, target)
+        # wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
         
         # Synthetic
         print("\nSynthetic: Machine Learning Utility in Classification...\n")

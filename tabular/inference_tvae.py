@@ -63,9 +63,9 @@ def main():
     
     model_name = 'TVAE'
     
-    dataset = 'loan'
+    # dataset = 'loan'
     # dataset = 'adult'
-    # dataset = 'covtype'
+    dataset = 'covtype'
     
     """model load"""
     artifact = wandb.use_artifact(
@@ -229,6 +229,11 @@ def main():
     fig = Image.open('./assets/{}/dag_train_{}.png'.format(config["dataset"], config["dataset"]))
     wandb.log({'Baseline DAG (Train)': wandb.Image(fig)})
     #%%
+    def gumbel_sampling(size, eps = 1e-20):
+        U = torch.rand(size)
+        G = (- (U + eps).log() + eps).log()
+        return G
+    #%%
     """train dataset representation"""
     train_recon = []
     for (x_batch, y_batch) in tqdm.tqdm(iter(dataloader), desc="inner loop"):
@@ -240,7 +245,16 @@ def main():
             out = model(x_batch, deterministic=True)
         train_recon.append(out[-1])
     train_recon = torch.cat(train_recon, dim=0)
-    train_recon = dataset.transformer.inverse_transform(train_recon, model.sigma.detach().cpu().numpy())
+    #%%
+    if config["dataset"] == "covtype":
+        train_recon1 = dataset.transformer.inverse_transform(train_recon.numpy(), model.sigma.detach().cpu().numpy())
+        out = train_recon[:, -7:]
+        G = gumbel_sampling(out.shape)
+        _, out = (nn.LogSoftmax(dim=1)(out) + G).max(dim=1, keepdims=True)
+        train_recon1["Cover_Type"] = out
+        train_recon = train_recon1
+    else:
+        train_recon = dataset.transformer.inverse_transform(train_recon.numpy(), model.sigma.detach().cpu().numpy())
     #%%
     """PC algorithm : train dataset representation"""
     try: 
@@ -284,7 +298,16 @@ def main():
             data.append(fake.numpy())
     data = np.concatenate(data, axis=0)
     data = data[:len(train)]
-    sample_df = dataset.transformer.inverse_transform(data, model.sigma.detach().cpu().numpy())
+    #%%
+    if config["dataset"] == "covtype":
+        sample_df1 = dataset.transformer.inverse_transform(data, model.sigma.detach().cpu().numpy())
+        out = torch.tensor(data[:, -7:])
+        G = gumbel_sampling(out.shape)
+        _, out = (nn.LogSoftmax(dim=1)(out) + G).max(dim=1, keepdims=True)
+        sample_df1["Cover_Type"] = out
+        sample_df = sample_df1
+    else:
+        sample_df = dataset.transformer.inverse_transform(data, model.sigma.detach().cpu().numpy())
     #%%
     """PC algorithm : synthetic dataset"""
     try:
@@ -343,10 +366,10 @@ def main():
     elif config["dataset"] == "covtype": # classification
         target = 'Cover_Type'
         
-        # baseline
-        print("\nBaseline: Machine Learning Utility in Classification...\n")
-        base_f1result = classification_eval(train, test, target)
-        wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
+        # # baseline
+        # print("\nBaseline: Machine Learning Utility in Classification...\n")
+        # base_f1result = classification_eval(train, test, target)
+        # wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
         
         # Synthetic
         print("\nSynthetic: Machine Learning Utility in Classification...\n")
