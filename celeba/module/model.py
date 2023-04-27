@@ -5,7 +5,9 @@ import torch.nn.functional as F
 
 import numpy as np
 
-from module.resnet import *
+# from module.resnet import *
+from torchvision import models
+from module.sagan import Generator
 #%%
 class InvertiblePriorLinear(nn.Module):
     """Invertible Prior for Linear case
@@ -102,25 +104,28 @@ class PlanarFlows(nn.Module):
         return h, logdet
 #%%
 class CDGVAE(nn.Module):
-    def __init__(self, B, mask, config, device, arch='resnet', fc_size=2048):
+    def __init__(self, B, mask, config, device, fc_size=32):
         super(CDGVAE, self).__init__()
         
         self.config = config
         self.mask = mask
-        assert sum(config["factor"]) == config["node"]
-        assert len(config["factor"]) == len(mask)
+        # assert sum(config["factor"]) == config["node"]
+        # assert len(config["factor"]) == len(mask)
         self.device = device
         
         """encoder"""
-        if arch == 'resnet':
-            self.encoder = resnet50(
-                pretrained=False, in_channels=3, fc_size=fc_size, 
-                out_dim=config["node"] * 2 + config["latent_dim"] * 2)
-        else:
-            assert arch == 'resnet18'
-            self.encoder = resnet18(
-                pretrained=False, in_channels=3, fc_size=fc_size, 
-                out_dim=config["node"] * 2 + config["latent_dim"] * 2)
+        self.encoder = models.resnet18(pretrained=True)
+        self.encoder.fc = nn.Linear(
+            self.encoder.fc.in_features, 
+            config["node"] * 2 + config["latent_dim"] * 2)
+        """freeze!"""
+        for param in self.encoder.parameters():
+            param.requires_grad_(False)
+        self.encoder.fc.weight.requires_grad = True
+        self.encoder.fc.bias.requires_grad = True
+        # self.encoder = resnet18(
+        #     pretrained=True, in_channels=3, fc_size=fc_size, 
+        #     out_dim=config["node"] * 2 + config["latent_dim"] * 2).to(device)
         
         """Causal Adjacency Matrix"""
         self.B = B.to(device) 
@@ -138,23 +143,25 @@ class CDGVAE(nn.Module):
             raise ValueError('Not supported SCM!')
         
         """decoder"""
-        self.decoder = nn.ModuleList(
-            [nn.Sequential(
-                nn.Linear(k, 300),
-                nn.ELU(),
-                nn.Linear(300, 300),
-                nn.ELU(),
-                nn.Linear(300, 3*config["image_size"]*config["image_size"]),
-            ).to(device) for k in config["factor"]])
+        self.decoder = [
+            Generator(2).to(device), 
+            Generator(2).to(device), 
+            Generator(2).to(device), 
+            Generator(3).to(device), 
+            Generator(config["latent_dim"]).to(device)]
         
     def inverse(self, input): 
         inverse_latent = list(map(lambda x, layer: layer.inverse(x), input, self.flows))
         return inverse_latent
     
     def get_posterior(self, input):
-        h = self.encoder(nn.Flatten()(input)) # [batch, node * 2]
-        mean, logvar = torch.split(h, self.config["node"], dim=1)
-        return mean, logvar
+        h = self.encoder(input[..., :3].permute(0, 3, 1, 2))
+        h1, h2 = torch.split(h, [self.config["node"] * 2, self.config["latent_dim"] * 2], dim=1)
+        mean1, logvar1 = torch.split(h1, self.config["node"], dim=1)
+        mean2, logvar2 = torch.split(h2, self.config["latent_dim"], dim=1)
+        # h = self.encoder(nn.Flatten()(input)) # [batch, node * 2]
+        # mean, logvar = torch.split(h, self.config["node"], dim=1)
+        return mean1, logvar1, mean2, logvar2
     
     def transform(self, input, log_determinant=False):
         latent = torch.matmul(input, self.I_B_inv) # [batch, node], input = epsilon (exogenous variables)
@@ -166,38 +173,47 @@ class CDGVAE(nn.Module):
         return orig_latent, latent, logdet
     
     def encode(self, input, deterministic=False, log_determinant=False):
-        mean, logvar = self.get_posterior(input)
+        mean1, logvar1, mean2, logvar2 = self.get_posterior(input)
         """Latent Generating Process"""
         if deterministic:
-            epsilon = mean
+            epsilon1 = mean1
+            epsilon2 = mean2
         else:
             noise = torch.randn(input.size(0), self.config["node"]).to(self.device) 
-            epsilon = mean + torch.exp(logvar / 2) * noise
-        orig_latent, latent, logdet = self.transform(epsilon, log_determinant=log_determinant)
-        return mean, logvar, epsilon, orig_latent, latent, logdet
+            epsilon1 = mean1 + torch.exp(logvar1 / 2) * noise
+            noise = torch.randn(input.size(0), self.config["node"]).to(self.device) 
+            epsilon2 = mean2 + torch.exp(logvar2 / 2) * noise
+        orig_latent, latent, logdet = self.transform(epsilon1, log_determinant=log_determinant)
+        return (mean1, logvar1, epsilon1, orig_latent, latent, logdet), (mean2, logvar2, epsilon2)
     
-    def decode(self, input):
-        latent = torch.cat(input, axis=1)
-        latent = torch.split(latent, self.config["factor"], dim=-1)
+    def decode(self, latent, epsilon2):
+        latent = [
+            torch.cat([latent[0], latent[2]], dim=1),
+            torch.cat([latent[0], latent[3]], dim=1),
+            torch.cat([latent[0], latent[4]], dim=1),
+            torch.cat([latent[0], latent[1], latent[5]], dim=1),
+            epsilon2]
         xhat_separated = [D(z) for D, z in zip(self.decoder, latent)]
-        xhat = [x.view(-1, self.config["image_size"], self.config["image_size"], 3) for x in xhat_separated]
+        xhat = [x.permute(0, 2, 3, 1) for x in xhat_separated]
         xhat = [x * m.to(self.device) for x, m in zip(xhat, self.mask)] # masking
         xhat = torch.tanh(sum(xhat)) # generalized addictive model (GAM)
         return xhat_separated, xhat
     
     def forward(self, input, deterministic=False, log_determinant=False):
         """encoding"""
-        mean, logvar, epsilon, orig_latent, latent, logdet = self.encode(input, 
-                                                                         deterministic=deterministic,
-                                                                         log_determinant=log_determinant)
+        (mean1, logvar1, epsilon1, orig_latent, latent, logdet), (mean2, logvar2, epsilon2) = self.encode(
+            input, 
+            deterministic=deterministic,
+            log_determinant=log_determinant)
         
         """decoding"""
-        xhat_separated, xhat = self.decode(latent)
+        xhat_separated, xhat = self.decode(latent, epsilon2)
         
         """Alignment"""
-        _, _, _, _, align_latent, _ = self.encode(input, 
-                                                  deterministic=True, 
-                                                  log_determinant=log_determinant)
+        (_, _, _, _, align_latent, _), _ = self.encode(
+            input, 
+            deterministic=True, 
+            log_determinant=log_determinant)
         
-        return mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat
+        return (mean1, logvar1, epsilon1, orig_latent, latent, logdet), (mean2, logvar2, epsilon2), align_latent, xhat_separated, xhat
 #%%
