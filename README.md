@@ -52,10 +52,6 @@ python tabular/main_tvae.py
 ```
 .
 +-- assets 
-|       +-- CDM 
-|       +-- do (counterfactual images)
-|       +-- sample_efficiency
-
 +-- modules 
 |       +-- datasets.py
 |       +-- model.py
@@ -71,15 +67,11 @@ python tabular/main_tvae.py
 +-- inference.py
 +-- metric.py
 +-- sample_efficiency.py
-+-- requirements.txt
 +-- LICENSE
 +-- README.md
-+-- sweep.py
-+-- sweep.yaml
 
 +-- DR (folder which contains source codes for distributional robustness experiments)
 |   +-- assets 
-|       +-- robustness
 |   +-- main.py
 |   +-- main_semi.py
 |   +-- robustness.py
@@ -87,9 +79,6 @@ python tabular/main_tvae.py
 
 +-- tabular (folder which contains source codes for tabular dataset experiments)
 |   +-- assets 
-|       +-- adult
-|       +-- covtype
-|       +-- loan
 |   +-- modules
 |       +-- adult_datasets.py
 |       +-- covtype_datasets.py
@@ -111,6 +100,4 @@ python tabular/main_tvae.py
 |   +-- inference.py
 |   +-- main_tvae.py
 |   +-- inference_tvae.py
-|   +-- sweep.py
-|   +-- sweep.yaml
 ```
