@@ -190,7 +190,7 @@ def main():
             y_batch = y_batch.cuda()
         
         with torch.no_grad():
-            if config["model"] in ['GAM', 'GAMsemi']:
+            if config["model"] in ['CDGVAE', 'CDGVAEsemi']:
                 _, _, _, _, latent, _, _, _, _ = model(x_batch, deterministic=True)
             else:
                 _, _, _, _, latent, _, _, _ = model(x_batch, deterministic=True)
@@ -216,7 +216,7 @@ def main():
                     y_batch = y_batch.cuda()
 
                 with torch.no_grad():
-                    if config["model"] in ['GAM', 'GAMsemi']:
+                    if config["model"] in ['CDGVAE', 'CDGVAEsemi']:
                         # mean, logvar, epsilon, orig_latent, latent, logdet, align_latent, xhat_separated, xhat = model(x_batch, deterministic=True)
                         mean, logvar, epsilon, orig_latent, latent, logdet = model.encode(x_batch, deterministic=True)
                     else:
@@ -246,7 +246,7 @@ def main():
                         z = list(map(lambda x, layer: layer(x), z, model.flows))
                         z = [z_[0] for z_ in z]
                         
-                        if config["model"] in ['GAM', 'GAMsemi']:
+                        if config["model"] in ['CDGVAE', 'CDGVAEsemi']:
                             _, do_xhat = model.decode(z)
                         else:
                             do_xhat = model.decoder(torch.cat(z, dim=1)).view(-1, config["image_size"], config["image_size"], 3)
