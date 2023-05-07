@@ -18,3 +18,10 @@ wandb*
 CelebAMask-HQ
 *.zip
 CelebA
+CDM
+do
+sample_efficiency
+*.txt
+adult
+covtype
+loan
