@@ -324,10 +324,10 @@ def main():
     elif config["dataset"] == "covtype": # classification
         target = 'Cover_Type'
         
-        # # baseline
-        # print("\nBaseline: Machine Learning Utility in Classification...\n")
-        # base_f1result = classification_eval(dataset.train, testdataset.test, target)
-        # wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
+        # baseline
+        print("\nBaseline: Machine Learning Utility in Classification...\n")
+        base_f1result = classification_eval(dataset.train, testdataset.test, target)
+        wandb.log({'F1 (Baseline)': np.mean([x[1] for x in base_f1result])})
         
         # Synthetic
         print("\nSynthetic: Machine Learning Utility in Classification...\n")
