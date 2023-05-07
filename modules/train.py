@@ -147,7 +147,7 @@ def train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer
     
     return logs, xhat
 #%%
-def train_GAM(dataloader, model, config, optimizer, device):
+def train_CDGVAE(dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],
@@ -208,7 +208,7 @@ def train_GAM(dataloader, model, config, optimizer, device):
     
     return logs, xhat
 #%%
-def train_GAM_semi(datasetL, datasetU, model, config, optimizer, device):
+def train_CDGVAE_semi(datasetL, datasetU, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],

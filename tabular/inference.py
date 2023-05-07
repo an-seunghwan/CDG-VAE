@@ -61,7 +61,7 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
+    model_name = 'CDGVAE'
     
     # dataset = 'loan'
     # dataset = 'adult'
@@ -150,7 +150,7 @@ def main():
             lr=config["lr_D"]
         )
         
-    elif config["model"] == 'GAM':
+    elif config["model"] == 'CDGVAE':
         """Decoder masking"""
         if config["dataset"] == 'loan':
             mask = [2, 2, 1]
@@ -160,8 +160,8 @@ def main():
             mask = [1, 1, 2, 1, 1, 1 + 7]
         else:
             raise ValueError('Not supported dataset!')
-        from modules.model import GAM
-        model = GAM(B, mask, config, device) 
+        from modules.model import CDGVAE
+        model = CDGVAE(B, mask, config, device) 
     
     else:
         raise ValueError('Not supported model!')
@@ -228,7 +228,7 @@ def main():
     randn = torch.randn(dataset.__len__(), config["node"])
     with torch.no_grad():
         _, latent, _ = model.transform(randn, log_determinant=False)
-        if config["model"] == 'GAM':
+        if config["model"] == 'CDGVAE':
             sample_recon = model.decode(latent)[1]
         else:
             sample_recon = model.decoder(torch.cat(latent, dim=1))

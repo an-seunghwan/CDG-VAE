@@ -4,15 +4,6 @@ This repository is the official implementation of Causally Disentangled Generati
 
 > **_NOTE:_** This repository supports [WandB](https://wandb.ai/site) MLOps platform!
 
-## Package Dependencies
-
-```setup
-python==3.7
-numpy==1.21.6
-torch==1.13.0
-```
-Additional package requirements for this repository are described in `requirements.txt`.
-
 ## Training & Evaluation 
 
 ### 1. How to Training & Evaluation  
@@ -23,11 +14,11 @@ Additional package requirements for this repository are described in `requiremen
 
 - training CDG-VAE
 ```
-python main.py --model "GAM"
+python main.py --model "CDGVAE"
 ```   
 - training CDG-VAE in order to evaluate distributional robustness of downstream task
 ```
-python DR/main.py --model "GAM"
+python DR/main.py --model "CDGVAE"
 ```   
 (Note) The file names with `_semi` means training CDG-VAE under semi-supervised learning setting.
 
@@ -41,7 +32,7 @@ python DR/main.py --model "GAM"
 #### training 
 - CDG-VAE
 ```
-python tabular/main.py --model "GAM"
+python tabular/main.py --model "CDGVAE"
 ```  
 - CDG-TVAE
 ```

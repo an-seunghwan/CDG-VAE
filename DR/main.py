@@ -29,7 +29,7 @@ from modules.datasets import (
 from modules.train import (
     train_VAE,
     train_InfoMax,
-    train_GAM,
+    train_CDGVAE,
 )
 #%%
 import sys
@@ -63,8 +63,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--model', type=str, default='GAM', 
-                        help='VAE based model options: VAE, InfoMax, GAM')
+    parser.add_argument('--model', type=str, default='CDGVAE', 
+                        help='VAE based model options: VAE, InfoMax, CDGVAE')
 
     # causal structure
     parser.add_argument("--node", default=5, type=int,
@@ -163,7 +163,7 @@ def main():
             lr=config["lr_D"]
         )
         
-    elif config["model"] == 'GAM':
+    elif config["model"] == 'CDGVAE':
         """Decoder masking"""
         mask = []
         # light
@@ -179,8 +179,8 @@ def main():
         m[51:, ...] = 1
         mask.append(m)
         
-        from modules.model import GAM
-        model = GAM(B, mask, config, device) 
+        from modules.model import CDGVAE
+        model = CDGVAE(B, mask, config, device) 
     
     else:
         raise ValueError('Not supported model!')
@@ -199,8 +199,8 @@ def main():
             logs, xhat = train_VAE(dataloader, model, config, optimizer, device)
         elif config["model"] == 'InfoMax':
             logs, xhat = train_InfoMax(dataloader, model, discriminator, config, optimizer, optimizer_D, device)
-        elif config["model"] == 'GAM':
-            logs, xhat = train_GAM(dataloader, model, config, optimizer, device)
+        elif config["model"] == 'CDGVAE':
+            logs, xhat = train_CDGVAE(dataloader, model, config, optimizer, device)
         else:
             raise ValueError('Not supported model!')
         

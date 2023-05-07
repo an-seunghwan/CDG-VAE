@@ -66,8 +66,8 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
-    # model_name = 'GAMsemi'
+    model_name = 'CDGVAE'
+    # model_name = 'CDGVAEsemi'
     
     scm = 'linear'
     # scm = 'nonlinear'
@@ -121,7 +121,7 @@ def main():
         from modules.model import VAE
         model = VAE(B, config, device) 
         
-    elif config["model"] in ['GAM', 'GAMsemi']:
+    elif config["model"] in ['CDGVAE', 'CDGVAEsemi']:
         """Decoder masking"""
         mask = []
         # light
@@ -137,8 +137,8 @@ def main():
         m[51:, ...] = 1
         mask.append(m)
         
-        from modules.model import GAM
-        model = GAM(B, mask, config, device) 
+        from modules.model import CDGVAE
+        model = CDGVAE(B, mask, config, device) 
     
     else:
         raise ValueError('Not supported model!')

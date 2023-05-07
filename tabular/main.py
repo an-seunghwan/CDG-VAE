@@ -24,7 +24,7 @@ from modules.simulation import (
 from modules.train import (
     train_VAE,
     train_InfoMax,
-    train_GAM,
+    train_CDGVAE,
 )
 #%%
 import sys
@@ -60,8 +60,8 @@ def get_args(debug):
                         help='seed for repeatable results')
     parser.add_argument('--dataset', type=str, default='loan', 
                         help='Dataset options: loan, adult, covtype')
-    parser.add_argument('--model', type=str, default='GAM', 
-                        help='VAE based model options: VAE, InfoMax, GAM')
+    parser.add_argument('--model', type=str, default='CDGVAE', 
+                        help='VAE based model options: VAE, InfoMax, CDGVAE')
 
     # causal structure
     parser.add_argument("--node", default=3, type=int,
@@ -184,7 +184,7 @@ def main():
             lr=config["lr_D"]
         )
         
-    elif config["model"] == 'GAM':
+    elif config["model"] == 'CDGVAE':
         """Decoder masking"""
         if config["dataset"] == 'loan':
             mask = [2, 2, 1]
@@ -194,8 +194,8 @@ def main():
             mask = [1, 1, 2, 1, 1, 1 + 7]
         else:
             raise ValueError('Not supported dataset!')
-        from modules.model import GAM
-        model = GAM(B, mask, config, device) 
+        from modules.model import CDGVAE
+        model = CDGVAE(B, mask, config, device) 
     
     else:
         raise ValueError('Not supported model!')
@@ -214,8 +214,8 @@ def main():
             logs = train_VAE(dataset, dataloader, model, config, optimizer, device)
         elif config["model"] == 'InfoMax':
             logs = train_InfoMax(dataset, dataloader, model, discriminator, config, optimizer, optimizer_D, device)
-        elif config["model"] == 'GAM':
-            logs = train_GAM(dataset, dataloader, model, config, optimizer, device)
+        elif config["model"] == 'CDGVAE':
+            logs = train_CDGVAE(dataset, dataloader, model, config, optimizer, device)
         else:
             raise ValueError('Not supported model!')
         
