@@ -170,7 +170,7 @@ def train_InfoMax(dataset, dataloader, model, discriminator, config, optimizer, 
     
     return logs
 #%%
-def train_GAM(dataset, dataloader, model, config, optimizer, device):
+def train_CDGVAE(dataset, dataloader, model, config, optimizer, device):
     logs = {
         'loss': [], 
         'recon': [],

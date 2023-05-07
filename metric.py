@@ -67,8 +67,8 @@ def main():
     
     # model_name = 'VAE'
     # model_name = 'InfoMax'
-    model_name = 'GAM'
-    # model_name = 'GAMsemi'
+    model_name = 'CDGVAE'
+    # model_name = 'CDGVAEsemi'
     
     scm = 'linear'
     # scm = 'nonlinear'

@@ -22,7 +22,7 @@ from modules.simulation import (
 )
 
 from modules.model import (
-    GAM,
+    CDGVAE,
 )
 
 from modules.datasets import (
@@ -31,7 +31,7 @@ from modules.datasets import (
 )
 
 from modules.train import (
-    train_GAM_semi
+    train_CDGVAE_semi
 )
 #%%
 import sys
@@ -65,8 +65,8 @@ def get_args(debug):
     
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--model', type=str, default='GAMsemi', 
-                        help='Model options: GAMsemi')
+    parser.add_argument('--model', type=str, default='CDGVAEsemi', 
+                        help='Model options: CDGVAEsemi')
     
     # causal structure
     parser.add_argument("--node", default=5, type=int,
@@ -162,7 +162,7 @@ def main():
     m[51:, ...] = 1
     mask.append(m)
     
-    model = GAM(B, mask, config, device) 
+    model = CDGVAE(B, mask, config, device) 
     model = model.to(device)
     
     optimizer = torch.optim.Adam(
@@ -173,7 +173,7 @@ def main():
     model.train()
     #%%
     for epoch in range(config["epochs"]):
-        logs, xhat = train_GAM_semi(datasetL, datasetU, model, config, optimizer, device)
+        logs, xhat = train_CDGVAE_semi(datasetL, datasetU, model, config, optimizer, device)
         
         print_input = "[epoch {:03d}]".format(epoch + 1)
         print_input += ''.join([', {}: {:.4f}'.format(x, np.mean(y)) for x, y in logs.items()])
