@@ -1,8 +1,11 @@
 # Causally Disentangled Generative Variational AutoEncoder
 
-This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder (CDG-VAE) with pytorch. 
+This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder (ECAI-2023 accepted paper) with pytorch. 
 
 > **_NOTE:_** This repository supports [WandB](https://wandb.ai/site) MLOps platform!
+
+## Appendix
+See `appendix.pdf` for the appendix file for the main manuscript.
 
 ## Training & Evaluation 
 
@@ -69,6 +72,7 @@ python tabular/main_tvae.py
 +-- sample_efficiency.py
 +-- LICENSE
 +-- README.md
++-- appendix.pdf
 
 +-- DR (folder which contains source codes for distributional robustness experiments)
 |   +-- assets 
@@ -101,3 +105,5 @@ python tabular/main_tvae.py
 |   +-- main_tvae.py
 |   +-- inference_tvae.py
 ```
+
+## Citation
