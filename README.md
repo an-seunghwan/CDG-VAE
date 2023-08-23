@@ -1,6 +1,6 @@
 # Causally Disentangled Generative Variational AutoEncoder
 
-This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder (ECAI-2023 accepted paper) with pytorch. 
+This repository is the official implementation of Causally Disentangled Generative Variational AutoEncoder (26th European Conference on Artificial Intelligence ECAI 2023 accepted paper) with pytorch. 
 
 > **_NOTE:_** This repository supports [WandB](https://wandb.ai/site) MLOps platform!
 
