@@ -107,3 +107,30 @@ python tabular/main_tvae.py
 ```
 
 ## Citation
+```
+@inproceedings{DBLP:conf/ecai/AnSJ23,
+  author       = {SeungHwan An and
+                  Kyungwoo Song and
+                  Jong{-}June Jeon},
+  editor       = {Kobi Gal and
+                  Ann Now{\'{e}} and
+                  Grzegorz J. Nalepa and
+                  Roy Fairstein and
+                  Roxana Radulescu},
+  title        = {Causally Disentangled Generative Variational AutoEncoder},
+  booktitle    = {{ECAI} 2023 - 26th European Conference on Artificial Intelligence,
+                  September 30 - October 4, 2023, Krak{\'{o}}w, Poland - Including
+                  12th Conference on Prestigious Applications of Intelligent Systems
+                  {(PAIS} 2023)},
+  series       = {Frontiers in Artificial Intelligence and Applications},
+  volume       = {372},
+  pages        = {93--100},
+  publisher    = {{IOS} Press},
+  year         = {2023},
+  url          = {https://doi.org/10.3233/FAIA230258},
+  doi          = {10.3233/FAIA230258},
+  timestamp    = {Wed, 18 Oct 2023 09:31:16 +0200},
+  biburl       = {https://dblp.org/rec/conf/ecai/AnSJ23.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+```
